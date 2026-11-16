@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Defrost Quick Panel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="defrost-popup">
+    <!-- Header -->
+    <header class="popup-top">
+      <div class="popup-brand">
+        <span>Defrost</span>
+      </div>
+      <button id="btnOpenSidebar" class="btn-neo-pill" title="Open Defrost in Firefox sidebar">
+        Sidebar
+      </button>
+    </header>
+
+    <div class="project-pill-row">
+      <label for="popupProjectSelect" class="pill-label">Dossier:</label>
+      <div class="select-wrapper">
+        <select id="popupProjectSelect" class="pill-select"></select>
+      </div>
+    </div>
+
+    <!-- Quick AI Box -->
+    <div class="field-card">
+      <label for="popupAiPrompt" class="input-legend">Research inquiry or keywords:</label>
+      <textarea
+        id="popupAiPrompt"
+        class="clay-textarea"
+        rows="2"
+        placeholder="Enter your research inquiry or search keywords..."
+      ></textarea>
+      <div class="ai-popup-actions">
+        <button id="btnPopupGemini" class="btn-neo-ai" title="Formulate extraction strategy with AI">
+          Analyze with AI
+        </button>
+      </div>
+    </div>
+
+    <div class="action-grid-popup">
+      <button id="btnPopupScanActive" class="btn-neo-primary" title="Toggle continuous scanner">
+        <span id="popupScanLabel">Continuous scan</span>
+      </button>
+      <button id="btnPopupClip" class="btn-neo" title="Save selected text">
+        Clip selection
+      </button>
+    </div>
+
+    <div id="popupStatus" class="popup-status hidden"></div>
+
+    <div class="bottom-export-strip">
+      <span class="extracts-count-label">Extracts: <strong id="popupCount">0</strong></span>
+      <div class="export-minis-group">
+        <button id="btnPopupMd" class="btn-mini-export">MD</button>
+        <button id="btnPopupJson" class="btn-mini-export">JSON</button>
+        <button id="btnPopupCsv" class="btn-mini-export">CSV</button>
+      </div>
+    </div>
+
+    <footer class="popup-footer">
+      <span>0.0.45 alpha</span>
+    </footer>
+  </div>
+
+  <script src="../shared/expression-engine.js"></script>
+  <script src="../shared/storage.js"></script>
+  <script src="../shared/gemini.js"></script>
+  <script src="../shared/exporter.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

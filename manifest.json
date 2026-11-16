@@ -1,0 +1,68 @@
+{
+  "manifest_version": 3,
+  "name": "Defrost — AI Web Research & Scraping",
+  "version": "0.0.46",
+  "description": "Extracts, organizes and compiles web information from natural language research prompts with AI. Real-time continuous scanning and structured reports in Markdown, JSON and CSV.",
+  "author": "Defrost Lab",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "defrost@researchtools.local",
+      "strict_min_version": "109.0"
+    }
+  },
+  "icons": {
+    "48": "icons/icon.svg",
+    "96": "icons/icon.svg"
+  },
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "storage",
+    "scripting",
+    "contextMenus",
+    "downloads"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "https://generativelanguage.googleapis.com/*",
+    "http://localhost:11434/*",
+    "http://127.0.0.1:11434/*"
+  ],
+  "action": {
+    "default_icon": {
+      "48": "icons/icon.svg"
+    },
+    "default_title": "Defrost",
+    "default_popup": "popup/popup.html"
+  },
+  "sidebar_action": {
+    "default_title": "Defrost",
+    "default_panel": "sidebar/sidebar.html",
+    "default_icon": "icons/icon.svg",
+    "open_at_install": true
+  },
+  "background": {
+    "scripts": [
+      "shared/expression-engine.js",
+      "shared/storage.js",
+      "shared/gemini.js",
+      "background/background.js"
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "shared/expression-engine.js",
+        "content/extractor.js"
+      ],
+      "css": [
+        "content/extractor.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

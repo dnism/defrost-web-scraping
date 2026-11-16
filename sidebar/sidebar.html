@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Defrost</title>
+  <!-- Google Fonts: Manrope -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="sidebar.css">
+</head>
+<body>
+  <div class="defrost-shell">
+    <!-- Slim Floating Vertical Rail with Linear Icons -->
+    <nav class="nav-rail" aria-label="Quick Navigation">
+      <button class="rail-logo-btn" title="Defrost" id="btnRailLogo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07L19.07 4.93" stroke-linecap="round"/>
+        </svg>
+      </button>
+
+      <div class="rail-menu">
+        <button class="rail-btn active" id="railNavDashboard" title="Search &amp; Scanner">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+        </button>
+
+        <button class="rail-btn" id="railNavDocs" title="Dossier &amp; Collected Extracts">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+        </button>
+
+        <button class="rail-btn" id="railNavExport" title="Export Dossier Files">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="rail-spacer"></div>
+
+      <button class="rail-btn" id="railNavSettings" title="Settings &amp; AI API Key">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+      </button>
+    </nav>
+
+    <!-- Main Frost Canvas -->
+    <main class="frost-container">
+      <!-- Header with Project Selector -->
+      <header class="frost-header">
+        <div class="project-card-row">
+          <div class="project-meta-wrap" id="projectMetaWrap">
+            <div class="project-select-container" id="projectSelectContainer">
+              <label for="projectSelect" class="sr-only">Active dossier</label>
+              <select id="projectSelect" class="project-select-custom" title="Select Dossier (Double-click to rename)"></select>
+              <input type="text" id="projectRenameInline" class="project-rename-input hidden" placeholder="Enter dossier name">
+            </div>
+          </div>
+          <div class="project-actions-quick">
+            <button id="btnNewProject" class="btn-frost btn-xs" title="Create a new dossier">+ New</button>
+            <button id="btnDeleteProject" class="btn-frost btn-xs btn-danger-soft" title="Delete or reset dossier">Delete</button>
+          </div>
+        </div>
+
+        <!-- Inline New Project Panel -->
+        <div id="newProjectPanel" class="new-project-inline-card hidden">
+          <label for="newProjectName" class="field-label-micro">New dossier name:</label>
+          <input type="text" id="newProjectName" class="input-clay" placeholder="E.g. Clean Energy Transition 2026">
+          <div class="inline-actions-right">
+            <button id="btnCancelNewProject" class="btn-frost btn-xs">Cancel</button>
+            <button id="btnConfirmNewProject" class="btn-frost btn-frost-primary btn-xs">Create dossier</button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Scrollable Main Content -->
+      <div class="frost-content">
+        <!-- KPI Banner -->
+        <section class="kpi-banner">
+          <div>
+            <div class="kpi-label">Research dossier</div>
+            <div class="kpi-number-row">
+              <span class="kpi-number" id="statExtracts">0</span>
+              <span class="kpi-tag" id="statLiveStatus">Idle</span>
+            </div>
+          </div>
+          <div class="kpi-stats-sub">
+            <span class="kpi-sub-item">Web sources: <strong id="statSources">0</strong></span>
+            <span class="kpi-sub-item">Live matches: <strong id="statLiveMatches">0</strong></span>
+          </div>
+        </section>
+
+        <!-- VIEW 1: DASHBOARD & CONTINUOUS SCANNER -->
+        <div id="viewDashboard" class="view-panel">
+          <!-- CARD: AI Interpreter -->
+          <section class="neo-card" id="interpreterCard">
+            <div class="neo-card-header">
+              <div class="card-title-group">
+                <span class="card-badge-ai" id="interpreterBadgeAi">AI</span>
+                <div class="card-title-stack">
+                  <h2 class="neo-card-title">Interpreter</h2>
+                  <span class="model-subtitle" id="geminiModelBadge">gemini-2.5-flash</span>
+                </div>
+              </div>
+              <div class="card-header-right">
+                <button
+                  id="btnToggleInterpreter"
+                  class="interpreter-toggle-btn active"
+                  type="button"
+                  aria-pressed="true"
+                  title="Disable or re-enable the AI Interpreter"
+                >
+                  <span class="interpreter-toggle-dot"></span>
+                  <span id="interpreterToggleLabel">Enabled</span>
+                </button>
+              </div>
+            </div>
+
+            <div id="interpreterDisabledBanner" class="interpreter-disabled-banner hidden">
+              <span>AI interpreter is disabled. Write or edit rules manually in Extraction and scanner, or click Off to re-enable.</span>
+            </div>
+
+            <div id="interpreterBodyWrap" class="interpreter-body-wrap">
+              <div id="missingKeyInlineNotice" class="missing-key-inline-banner hidden">
+                <div class="inline-key-top">
+                  <span>Paste an API key, or switch to Local Open AI (Ollama):</span>
+                  <button id="btnQuickConfigKey" class="btn-frost btn-xs" type="button">Settings</button>
+                </div>
+                <div class="inline-key-input-row">
+                  <input
+                    type="password"
+                    id="inlineApiKeyInput"
+                    class="input-clay inline-key-field"
+                    placeholder="Paste key here (e.g. AIzaSy...)"
+                  >
+                  <button id="btnSaveInlineKey" class="btn-frost btn-frost-primary btn-xs" type="button">Save Key</button>
+                </div>
+              </div>
+
+              <div class="ai-prompt-box">
+                <label for="aiPromptInput" class="field-label-micro">Enter your research inquiry or detailed brief:</label>
+                <textarea
+                  id="aiPromptInput"
+                  class="ai-textarea"
+                  rows="3"
+                  placeholder="Paste your research question, topic, or long-form brief here..."
+                ></textarea>
+                <div class="ai-actions-row">
+                  <span class="ai-note-text">AI formulates an extraction strategy optimized for zero-latency scanning</span>
+                  <button id="btnInterpretWithGemini" class="btn-frost btn-frost-ai btn-sm">
+                    Analyze with AI
+                  </button>
+                </div>
+              </div>
+
+              <div id="interpreterErrorBanner" class="interpreter-error-banner hidden" role="alert"></div>
+
+              <!-- AI Generated Strategy Preview -->
+              <div id="geminiStrategyCard" class="strategy-result-card hidden">
+                <div class="strategy-objective" id="geminiObjectiveText"></div>
+                
+                <div class="strategy-section-group">
+                  <span class="strategy-subheading">GENERATED KEYWORDS:</span>
+                  <div class="strategy-tags-list" id="geminiKeyConceptsList"></div>
+                </div>
+
+                <div id="geminiExclusionsWrap" class="strategy-section-group hidden">
+                  <span class="strategy-subheading exclusion-heading">EXCLUSIONS (-NOT):</span>
+                  <div class="strategy-tags-list" id="geminiExclusionsList"></div>
+                </div>
+
+                <div class="strategy-section-group">
+                  <span class="strategy-subheading">SUGGESTED WEB SEARCH QUERIES:</span>
+                  <div class="web-queries-group" id="geminiWebQueriesList"></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- CARD: Scanner Controls & Extraction Rules -->
+          <section class="neo-card">
+            <div class="neo-card-header">
+              <div class="card-title-group">
+                <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <circle cx="12" cy="12" r="10"/>
+                  <polyline points="12 6 12 12 16 14"/>
+                </svg>
+                <h2 class="neo-card-title">Extraction and scanner</h2>
+              </div>
+            </div>
+
+            <div class="field-group-stacked">
+              <label for="expressionsInput" class="field-label-micro">Active detection expressions:</label>
+              <textarea
+                id="expressionsInput"
+                class="ai-textarea expressions-box"
+                rows="4"
+                placeholder="Expressions or keywords (auto-populated from Interpreter or written manually)..."
+              ></textarea>
+            </div>
+
+            <div class="scanner-keywords-block">
+              <div class="scanner-keywords-header">
+                <span class="field-label-micro">Active keywords &amp; exclusions:</span>
+                <span id="scannerKeywordsCount" class="scanner-keywords-count">0</span>
+              </div>
+              <div id="scannerKeywordsList" class="scanner-tags-list"></div>
+              <div class="scanner-keyword-add-row">
+                <input
+                  type="text"
+                  id="scannerKeywordAddInput"
+                  class="scanner-keyword-input"
+                  placeholder="+ Add keyword or -exclusion (Enter)"
+                >
+                <button type="button" id="btnAddScannerKeyword" class="btn-frost-mini">+ Add</button>
+              </div>
+            </div>
+
+            <div id="scannerTargetElementsBar" class="scanner-targets-bar"></div>
+
+            <div class="scanner-media-toggles">
+              <label class="toggle-chip" title="Extract image alt text, figure captions, SVG chart labels, and accessible media descriptions locally">
+                <input type="checkbox" id="toggleIncludeVisuals" checked>
+                <span>Captions &amp; SVG text</span>
+              </label>
+              <label class="toggle-chip" title="Automatically run AI Vision OCR on page charts and images during Continuous scan">
+                <input type="checkbox" id="toggleAutoAiOcr">
+                <span>Auto AI OCR</span>
+              </label>
+            </div>
+
+            <div class="actions-2x2-grid">
+              <button id="btnScanActive" class="btn-frost btn-frost-primary" title="Continuous scanner: collects data live as you scroll">
+                <span class="live-pulse-dot hidden" id="scanLiveDot"></span>
+                <span id="scanActiveLabel">Continuous scan</span>
+              </button>
+              <button id="btnScanAllTabs" class="btn-frost" title="Scan all open tabs with automatic rate-limiting">
+                Open tabs
+              </button>
+              <button id="btnClipSelection" class="btn-frost btn-sm" title="Save text selected with mouse">
+                Clip selection
+              </button>
+              <button id="btnClearHighlights" class="btn-frost btn-sm" title="Clear highlight boxes from page">
+                Clear highlights
+              </button>
+            </div>
+
+            <button id="btnScanVisualsAi" class="btn-frost btn-sm btn-visual-ai" title="Run AI Vision OCR on charts, infographics, SVG diagrams, canvases, or open image/PDF tabs">
+              Scan visuals &amp; OCR (AI)
+            </button>
+
+            <div id="scanStatusBanner" class="status-pill-frost hidden"></div>
+          </section>
+        </div>
+
+        <!-- VIEW 2: COLLECTED DOSSIER EXTRACTS -->
+        <div id="viewDocs" class="view-panel hidden">
+          <section class="neo-card">
+            <div class="neo-card-header">
+              <h2 class="neo-card-title">Collected dossier extracts</h2>
+              <button id="btnClearItems" class="btn-frost btn-xs btn-danger-soft">Clear all</button>
+            </div>
+
+            <div class="search-wrap">
+              <label for="filterSavedInput" class="sr-only">Filter saved extracts</label>
+              <input
+                type="search"
+                id="filterSavedInput"
+                class="search-input-pill"
+                placeholder="Filter extracts by text, source, tag or keyword..."
+              >
+            </div>
+
+            <div id="savedItemsList" class="saved-items-scroll-list"></div>
+          </section>
+        </div>
+
+        <!-- VIEW 3: EXPORT DOSSIER -->
+        <div id="viewExport" class="view-panel hidden">
+          <section class="neo-card">
+            <div class="neo-card-header">
+              <h2 class="neo-card-title">Export</h2>
+            </div>
+            <p class="export-lead-text">
+              Generate structured, self-describing research dossiers with source catalog, research notes, and compliance attribution.
+            </p>
+
+            <div class="form-field-group">
+              <label class="field-label-standard" for="groupBySelect">File organization &amp; grouping:</label>
+              <div class="select-wrapper">
+                <select id="groupBySelect" class="input-clay select-custom-arrow">
+                  <option value="expression">By expression / keyword (recommended)</option>
+                  <option value="domain">By source / domain</option>
+                  <option value="tag">By tag / category</option>
+                  <option value="score">By relevance score</option>
+                  <option value="chronological">Chronological order</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="export-buttons-grid">
+              <button id="btnExportMd" class="btn-frost btn-frost-primary btn-sm">Markdown (.md)</button>
+              <button id="btnExportJson" class="btn-frost btn-frost-indigo btn-sm">JSON (.json)</button>
+              <button id="btnExportCsv" class="btn-frost btn-frost-emerald btn-sm">CSV (.csv)</button>
+            </div>
+          </section>
+        </div>
+
+        <!-- VIEW 4: SETTINGS & AI API GUIDE -->
+        <div id="viewSettings" class="view-panel hidden">
+          <section class="neo-card settings-panel">
+            <div class="neo-card-header">
+              <h2 class="neo-card-title">AI engine configuration</h2>
+            </div>
+
+            <div class="form-field-group">
+              <div class="provider-mode-switch" role="group" aria-label="AI provider mode">
+                <button id="btnModeCloudApi" class="provider-mode-btn active" type="button">
+                  Cloud API (Gemini / Groq / OpenRouter)
+                </button>
+                <button id="btnModeLocalOllama" class="provider-mode-btn" type="button">
+                  Open AI (local Ollama · $0)
+                </button>
+              </div>
+            </div>
+
+            <!-- CLOUD API SETTINGS -->
+            <div id="cloudApiSettingsGroup">
+              <!-- Mini Tutorial for AI API Key -->
+              <div class="tutorial-accordion">
+                <div class="tutorial-header" id="tutorialToggle">
+                  <span class="tutorial-title">Guide: how to obtain an AI API key</span>
+                  <span id="tutorialIcon" class="accordion-arrow">Hide</span>
+                </div>
+                <div class="tutorial-content" id="tutorialBody">
+                  <div class="tutorial-callout">
+                    <strong>Supported plans:</strong> Google Gemini API key (free tier), Groq (<code>gsk_...</code>), OpenRouter (<code>sk-or-...</code>), OpenAI, or Anthropic.
+                  </div>
+                  <div class="tutorial-step">
+                    <span class="step-num">1</span>
+                    <span>Open the provider portal <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" class="tutorial-link">Google AI Studio</a> and sign in with your account.</span>
+                  </div>
+                  <div class="tutorial-step">
+                    <span class="step-num">2</span>
+                    <span>Click <strong>"Create API key"</strong> and copy your key (starts with <code>AIzaSy...</code>).</span>
+                  </div>
+                  <div class="tutorial-step">
+                    <span class="step-num">3</span>
+                    <span>Paste the key below and click <strong>"Verify &amp; save"</strong>. The key stays strictly inside your local Firefox profile.</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-field-group">
+                <label class="field-label-standard" for="geminiApiKeyInput">AI API key:</label>
+                <div class="api-input-wrap">
+                  <input
+                    type="password"
+                    id="geminiApiKeyInput"
+                    class="input-clay"
+                    placeholder="Paste your key here (e.g. AIzaSy...)"
+                  >
+                  <button id="btnToggleKeyVisibility" class="btn-frost btn-xs" type="button">Show</button>
+                </div>
+              </div>
+
+              <div class="form-field-group">
+                <label class="field-label-standard" for="geminiModelSelect">Cloud AI model:</label>
+                <div class="select-wrapper">
+                  <select id="geminiModelSelect" class="input-clay select-custom-arrow">
+                    <option value="gemini-2.5-flash">Flash 2.5 (recommended: fast &amp; multimodal)</option>
+                    <option value="gemini-2.5-flash-lite">Flash 2.5 Lite (high quota, low latency)</option>
+                    <option value="gemini-2.5-pro">Pro 2.5 (deep reasoning for complex docs)</option>
+                    <option value="gemini-2.0-flash">Flash 2.0 (wide compatibility)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- LOCAL OLLAMA OPEN AI SETTINGS -->
+            <div id="ollamaSettingsGroup" class="hidden">
+              <div class="tutorial-accordion">
+                <div class="tutorial-header">
+                  <span class="tutorial-title">Guide: running local Open AI with Ollama ($0 API cost)</span>
+                </div>
+                <div class="tutorial-content">
+                  <div class="tutorial-callout">
+                    <strong>Note:</strong> Anyone installing this extension must install <a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer" class="tutorial-link">Ollama</a> separately on their computer (browsers cannot bundle desktop AI engines).
+                  </div>
+                  <div class="tutorial-step">
+                    <span class="step-num">1</span>
+                    <span>Install Ollama and pull a lightweight model: <code>ollama pull qwen2.5:3b</code> (and optionally <code>ollama pull qwen2.5vl:3b</code> for image OCR).</span>
+                  </div>
+                  <div class="tutorial-step">
+                    <span class="step-num">2</span>
+                    <span>Keep Ollama running locally and click <strong>"Verify &amp; connect"</strong> below. If Firefox blocks CORS (HTTP 403), set <code>OLLAMA_ORIGINS=*</code> and restart Ollama.</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-field-group">
+                <label class="field-label-standard" for="ollamaUrlInput">Ollama server URL:</label>
+                <div class="api-input-wrap">
+                  <input
+                    type="text"
+                    id="ollamaUrlInput"
+                    class="input-clay"
+                    value="http://localhost:11434"
+                    placeholder="http://localhost:11434"
+                  >
+                  <button id="btnDetectOllamaModels" class="btn-frost btn-xs" type="button">Detect</button>
+                </div>
+              </div>
+
+              <div class="form-field-group">
+                <label class="field-label-standard" for="ollamaModelInput">Open AI text model (interpreter):</label>
+                <input
+                  type="text"
+                  id="ollamaModelInput"
+                  list="ollamaModelsDatalist"
+                  class="input-clay"
+                  placeholder="e.g. qwen2.5:latest, llama3.2:latest"
+                >
+                <datalist id="ollamaModelsDatalist">
+                  <option value="qwen2.5:3b"></option>
+                  <option value="qwen3.5:4b"></option>
+                  <option value="qwen2.5:latest"></option>
+                  <option value="llama3.2:3b"></option>
+                  <option value="llama3.1:8b"></option>
+                  <option value="mistral:latest"></option>
+                  <option value="gemma3:4b"></option>
+                </datalist>
+              </div>
+
+              <div class="form-field-group">
+                <label class="field-label-standard" for="ollamaVisionModelInput">Open AI vision model (image/chart OCR):</label>
+                <input
+                  type="text"
+                  id="ollamaVisionModelInput"
+                  list="ollamaVisionModelsDatalist"
+                  class="input-clay"
+                  placeholder="e.g. qwen3.5:4b, qwen2.5vl:3b"
+                >
+                <datalist id="ollamaVisionModelsDatalist">
+                  <option value="qwen2.5vl:3b"></option>
+                  <option value="qwen3.5:4b"></option>
+                  <option value="qwen2.5vl:latest"></option>
+                  <option value="llama3.2-vision:latest"></option>
+                  <option value="llava:latest"></option>
+                  <option value="minicpm-v:latest"></option>
+                </datalist>
+              </div>
+            </div>
+
+            <div class="form-field-group">
+              <label class="toggle-chip" title="Enable or disable the AI Interpreter section in the Collect tab">
+                <input type="checkbox" id="toggleSettingsInterpreter" checked>
+                <span>Enable AI interpreter section</span>
+              </label>
+            </div>
+
+            <div class="settings-actions-footer">
+              <button id="btnTestGeminiKey" class="btn-frost btn-frost-primary btn-sm">
+                Verify &amp; save
+              </button>
+            </div>
+            <div id="geminiTestFeedback" class="status-pill-frost hidden"></div>
+          </section>
+        </div>
+      </div>
+
+      <!-- Footer with Version 0.0.46 alpha -->
+      <footer class="frost-footer">
+        <span class="version-frost">0.0.46 alpha</span>
+        <span class="status-pill-frost" id="footerStatusPill">Defrost Ready</span>
+      </footer>
+    </main>
+  </div>
+
+  <script src="../shared/expression-engine.js"></script>
+  <script src="../shared/storage.js"></script>
+  <script src="../shared/gemini.js"></script>
+  <script src="../shared/exporter.js"></script>
+  <script src="sidebar.js"></script>
+</body>
+</html>

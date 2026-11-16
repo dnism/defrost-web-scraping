@@ -8,7 +8,7 @@
 
 ### 1) AI interpreter (cloud & local) (`shared/gemini.js`)
 - **Dual provider support:** works with **Google Gemini** (cloud API) or a local **Ollama** instance (configurable endpoint).
-- **Automated research strategy:** turns natural language prompts into structured objectives, semantic keywords, exclusions (`-NOT`), boolean/regex detection expressions, target DOM elements (`Paragraphs`, `Quotes & Comments`, `Lists`, `Tables`, `Visuals`), and guided web search queries.
+- **Automated research strategy:** turns natural language prompts into structured objectives, semantic keywords, exclusions (`-NOT`), boolean/regex detection expressions, target DOM elements (`Paragraphs`, `Quotes & Comments`, `Lists`, `Tables`, `Visuals`), and guided web search queries with **Search** and **Top N** quick-open actions.
 
 ### 2) Smart expression & scoring engine (`shared/expression-engine.js`)
 - **Natural language & morphological stemming:** supports Italian and English stemming, diacritic normalization, concept coverage, term proximity, and section heading boosts.
@@ -26,7 +26,12 @@
 - **Visual & media extraction:** extracts image alt text, figure captions, SVG chart labels, and supports optional **Auto AI OCR** for page charts and images.
 - **Semantic noise filtering & metadata:** strips navigation, footers, cookie banners, and ads, while associating each extract with its section heading (`h1`–`h6`), canonical URL, author, publication date, OpenGraph/Schema.org metadata, and detected license.
 
-### 4) Research dossier & structured exports (`shared/storage.js`, `shared/exporter.js`)
+### 4) Open search tabs & source filters (`background/background.js`, `sidebar/sidebar.js`)
+- **Bulk result opener (up to 50 tabs):** opens up to 50 search result pages in background tabs from the active search page (Google, DuckDuckGo, Bing, or Google Scholar) or from a custom search query, with automatic background pagination when requesting more than 10 results.
+- **Source filters:** toggleable filter chips (**Forums & Opinions**, **Papers & Academic**, **News & Articles**, **Official & Docs**) to target specific source types.
+- **Auto-scan & opened URLs list:** optionally runs a multi-tab scan automatically right after opening the tabs, and displays a clean numbered list (`1) 2) ...`) of all opened URLs.
+
+### 5) Research dossier & structured exports (`shared/storage.js`, `shared/exporter.js`)
 - **Multi-project dossiers:** organizes extracts by project with automatic deduplication, tags, and notes in `browser.storage.local`.
 - **Export formats:**
   - **Markdown (`.md`)** — YAML frontmatter, summary stats, grouped extracts, and source bibliography.

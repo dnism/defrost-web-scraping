@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="icons/icon.svg" alt="Defrost logo" width="72" height="72" />
-</p>
-
 # Defrost — web research & scraping
 
 **Defrost** is a Firefox WebExtension (Manifest V3) built to extract, filter, and organize web information starting from natural language research prompts. It combines an AI-powered strategy interpreter (**Google Gemini** or local **Ollama**) with a real-time continuous DOM & visual scanner, interactive keyword/exclusion management, and structured exports (`.md`, `.json`, `.csv`).

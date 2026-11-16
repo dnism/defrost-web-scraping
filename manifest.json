@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Defrost — AI Web Research & Scraping",
-  "version": "0.1.46",
+  "version": "0.2.1",
   "description": "Extracts, organizes and compiles web information from natural language research prompts with AI. Real-time continuous scanning and structured reports in Markdown, JSON and CSV.",
   "author": "Defrost Lab",
   "browser_specific_settings": {

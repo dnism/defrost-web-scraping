@@ -28,6 +28,17 @@
           </svg>
         </button>
 
+        <button class="rail-btn" id="railNavTabOpener" title="Open Search Result Tabs">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="16" rx="2"/>
+            <line x1="3" y1="9" x2="21" y2="9"/>
+            <circle cx="6.5" cy="6.5" r="0.8" fill="currentColor" stroke="none"/>
+            <circle cx="9.5" cy="6.5" r="0.8" fill="currentColor" stroke="none"/>
+            <line x1="7" y1="13" x2="17" y2="13"/>
+            <line x1="7" y1="16.5" x2="13" y2="16.5"/>
+          </svg>
+        </button>
+
         <button class="rail-btn" id="railNavDocs" title="Dossier &amp; Collected Extracts">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -93,7 +104,6 @@
             <div class="kpi-label">Research dossier</div>
             <div class="kpi-number-row">
               <span class="kpi-number" id="statExtracts">0</span>
-              <span class="kpi-tag" id="statLiveStatus">Idle</span>
             </div>
           </div>
           <div class="kpi-stats-sub">
@@ -262,6 +272,74 @@
             </button>
 
             <div id="scanStatusBanner" class="status-pill-frost hidden"></div>
+          </section>
+        </div>
+
+        <!-- VIEW 1B: OPEN TOP SEARCH RESULT TABS -->
+        <div id="viewTabOpener" class="view-panel hidden">
+          <section class="neo-card">
+            <div class="neo-card-header">
+              <div class="card-title-group">
+                <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="4" width="18" height="16" rx="2"/>
+                  <line x1="3" y1="9" x2="21" y2="9"/>
+                  <circle cx="6.5" cy="6.5" r="0.8" fill="currentColor" stroke="none"/>
+                  <circle cx="9.5" cy="6.5" r="0.8" fill="currentColor" stroke="none"/>
+                  <line x1="7" y1="13" x2="17" y2="13"/>
+                  <line x1="7" y1="16.5" x2="13" y2="16.5"/>
+                </svg>
+                <h2 class="neo-card-title">Open search tabs</h2>
+              </div>
+            </div>
+
+            <p class="tab-opener-description">
+              Open up to <strong>50</strong> result pages in background tabs directly from your current search tab (Google, DuckDuckGo, Bing, or Google Scholar), or run a new query below. Enable <strong>Auto-scan</strong> to extract matches from all opened tabs right away.
+            </p>
+
+            <div class="field-group-stacked">
+              <label for="tabOpenerQueryInput" class="field-label-micro">Search query (optional):</label>
+              <input
+                type="text"
+                id="tabOpenerQueryInput"
+                class="input-clay"
+                placeholder="Leave empty to read links from the active search tab..."
+              >
+            </div>
+
+            <div class="tab-opener-filters-wrap">
+              <span class="scanner-targets-label">SOURCE FILTERS (OPTIONAL):</span>
+              <div id="tabOpenerFiltersBar" class="scanner-targets-bar">
+                <button type="button" class="target-el-chip" data-source-filter="forums" title="Forums, Reddit, Quora, Hacker News, Q&amp;A and opinion discussions">Forums &amp; Opinions</button>
+                <button type="button" class="target-el-chip" data-source-filter="papers" title="Academic papers, PubMed, arXiv, Springer, ScienceDirect, IEEE, PDFs">Papers &amp; Academic</button>
+                <button type="button" class="target-el-chip" data-source-filter="news" title="News outlets, articles, press, blogs and editorial pieces">News &amp; Articles</button>
+                <button type="button" class="target-el-chip" data-source-filter="official" title="Government, EU, institutional portals (.gov, .europa.eu, .org)">Official &amp; Docs</button>
+              </div>
+            </div>
+
+            <div class="search-top-results-bar">
+              <label for="topResultsCountInput" class="field-label-micro">Open top</label>
+              <input
+                type="number"
+                id="topResultsCountInput"
+                class="top-results-number-input"
+                min="1"
+                max="50"
+                value="5"
+                title="Number of search result pages to open (1-50)"
+              >
+              <button id="btnOpenTopResults" type="button" class="btn-frost btn-frost-primary btn-sm" title="Open the top N results in background tabs">
+                Open tabs
+              </button>
+              <label class="toggle-chip toggle-chip-compact" title="Automatically run Open tabs scan after opening the search result pages">
+                <input type="checkbox" id="toggleAutoScanTopResults">
+                <span>Auto-scan</span>
+              </label>
+            </div>
+
+            <div id="tabOpenerResultsWrap" class="tab-opener-results-wrap hidden">
+              <span class="strategy-subheading">OPENED URLS:</span>
+              <div id="tabOpenerResultsList" class="tab-opener-results-list"></div>
+            </div>
           </section>
         </div>
 
@@ -481,9 +559,9 @@
         </div>
       </div>
 
-      <!-- Footer with Version 0.1.46-alpha -->
+      <!-- Footer with Version 0.2.1-alpha -->
       <footer class="frost-footer">
-        <span class="version-frost">0.1.46-alpha</span>
+        <span class="version-frost">0.2.1-alpha</span>
         <span class="status-pill-frost" id="footerStatusPill">Defrost Ready</span>
       </footer>
     </main>

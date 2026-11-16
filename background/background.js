@@ -201,6 +201,379 @@
     return { ok: true, tabId: tab.id, url: targetUrl };
   }
 
+  /**
+   * Waits for a browser tab to reach 'complete' status, with a timeout guard.
+   */
+  async function waitForTabComplete(tabId, timeoutMs = 12000) {
+    try {
+      const current = await browser.tabs.get(tabId);
+      if (current && current.status === 'complete') return true;
+    } catch (_) {
+      return false;
+    }
+
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (ok) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        if (browser.tabs && browser.tabs.onUpdated) {
+          browser.tabs.onUpdated.removeListener(onUpdated);
+        }
+        resolve(ok);
+      };
+
+      const onUpdated = (updatedId, changeInfo) => {
+        if (updatedId === tabId && changeInfo && changeInfo.status === 'complete') {
+          finish(true);
+        }
+      };
+
+      const timer = setTimeout(() => finish(false), timeoutMs);
+      browser.tabs.onUpdated.addListener(onUpdated);
+    });
+  }
+
+  /**
+   * Extracts up to `limit` organic result URLs from an open search engine tab.
+   */
+  async function extractSearchResultUrlsFromTab(tabId, limit = 5) {
+    const maxCount = Math.max(1, Math.min(50, Number(limit) || 5));
+    const injected = await browser.scripting.executeScript({
+      target: { tabId },
+      func: (maxUrls) => {
+        const host = location.hostname.toLowerCase();
+        const unwrapUrl = (rawHref) => {
+          try {
+            const u = new URL(rawHref, location.href);
+            if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+            if (u.hostname.includes('google.') && u.pathname === '/url') {
+              const q = u.searchParams.get('q') || u.searchParams.get('url');
+              if (q) return new URL(q).href;
+            }
+            if (u.hostname.includes('duckduckgo.com') && u.pathname.startsWith('/l/')) {
+              const uddg = u.searchParams.get('uddg');
+              if (uddg) return new URL(uddg).href;
+            }
+            return u.href;
+          } catch (_) {
+            return null;
+          }
+        };
+
+        const isNoiseUrl = (href) => {
+          try {
+            const u = new URL(href);
+            const h = u.hostname.toLowerCase();
+            if (h === host || h.endsWith(`.${host}`)) return true;
+            if (
+              h.includes('googleadservices.') ||
+              h.includes('doubleclick.') ||
+              h.includes('accounts.google.') ||
+              h.includes('support.google.') ||
+              h.includes('policies.google.') ||
+              h.includes('maps.google.') ||
+              (h.includes('google.') && (u.pathname.startsWith('/search') || u.pathname.startsWith('/preferences'))) ||
+              (h.includes('bing.com') && (u.pathname.startsWith('/aclick') || u.pathname.startsWith('/search'))) ||
+              (h.includes('duckduckgo.com') && (u.pathname === '/' || u.pathname.startsWith('/y.js')))
+            ) {
+              return true;
+            }
+            return false;
+          } catch (_) {
+            return true;
+          }
+        };
+
+        const selectors = [
+          // Google Search
+          '#search a:has(h3), #rso a:has(h3)',
+          // DuckDuckGo
+          'article[data-testid="result"] a[data-testid="result-title-a"], a.result__a',
+          // Bing
+          '#b_results li.b_algo h2 a',
+          // Google Scholar
+          '#gs_res_ccl_mid .gs_rt a',
+          // Brave / Startpage / Ecosia / Generic fallback
+          'main a[href^="http"]:has(h2, h3), main a[href^="http"]'
+        ];
+
+        const seen = new Set();
+        const results = [];
+        for (const sel of selectors) {
+          const nodes = Array.from(document.querySelectorAll(sel));
+          for (const a of nodes) {
+            if (!a || !a.getAttribute('href')) continue;
+            if (a.closest('[data-text-ad], .ads-ad, #tads, #bottomads, .b_ad, .result--ad')) continue;
+            const resolved = unwrapUrl(a.getAttribute('href'));
+            if (!resolved || isNoiseUrl(resolved)) continue;
+            const norm = resolved.split('#')[0];
+            if (seen.has(norm)) continue;
+            seen.add(norm);
+            results.push({
+              url: resolved,
+              title: String(a.textContent || '').replace(/\s+/g, ' ').trim()
+            });
+            if (results.length >= maxUrls) return results;
+          }
+          if (results.length > 0) break;
+        }
+        return results;
+      },
+      args: [maxCount]
+    });
+
+    const first = Array.isArray(injected) && injected[0] ? injected[0].result : [];
+    return Array.isArray(first) ? first : [];
+  }
+
+  const SOURCE_FILTER_RULES = {
+    forums: {
+      domains: [
+        'reddit.com', 'quora.com', 'news.ycombinator.com', 'stackexchange.com',
+        'stackoverflow.com', 'superuser.com', 'trustpilot.com', 'discourse.',
+        'disqus.com', 'answers.microsoft.com', 'community.', 'forum.', 'forums.'
+      ],
+      pathOrTitle: /(?:\/forum|\/forums|\/thread|\/threads|\/topic|\/discussion|\/community|\/comments|\/opinioni|\/recensioni|\/reviews|\breddit\b|\bquora\b|\bforum\b|\bopinioni\b|\brecensioni\b|\bdiscussion\b)/i
+    },
+    papers: {
+      domains: [
+        'arxiv.org', 'pubmed.ncbi.nlm.nih.gov', 'pmc.ncbi.nlm.nih.gov', 'ncbi.nlm.nih.gov',
+        'scholar.google.', 'sciencedirect.com', 'springer.com', 'link.springer.com',
+        'researchgate.net', 'ieee.org', 'ieeexplore.ieee.org', 'nature.com',
+        'plos.org', 'mdpi.com', 'wiley.com', 'onlinelibrary.wiley.com',
+        'tandfonline.com', 'sagepub.com', 'jstor.org', 'academia.edu',
+        'semanticscholar.org', 'frontiersin.org', 'bmj.com', 'thelancet.com',
+        'dl.acm.org', 'biorxiv.org', 'medrxiv.org', 'ssrn.com', 'zenodo.org'
+      ],
+      pathOrTitle: /(?:\.pdf(?:$|\?)|\.edu(?:\/|$)|\/doi\/|\/paper|\/papers|\/article\/pii\/|\/articles\/pmc|\/chapter\/|\bjournal\b|\bpreprint\b|\babstract\b)/i
+    },
+    news: {
+      domains: [
+        'reuters.com', 'bbc.com', 'bbc.co.uk', 'nytimes.com', 'theguardian.com',
+        'washingtonpost.com', 'bloomberg.com', 'forbes.com', 'wired.com', 'wired.it',
+        'techcrunch.com', 'arstechnica.com', 'theverge.com', 'ilsole24ore.com',
+        'repubblica.it', 'corriere.it', 'ansa.it', 'lastampa.it', 'ilpost.it',
+        'fanpage.it', 'tg24.sky.it', 'agi.it', 'adnkronos.com', 'medium.com',
+        'substack.com', 'apnews.com', 'cnn.com', 'economist.com', 'ft.com'
+      ],
+      pathOrTitle: /(?:\/news\/|\/notizie\/|\/articolo\/|\/articoli\/|\/cronaca\/|\/economia\/|\/blog\/|\/story\/|\/202[0-9]\/|\bnews\b|\beditorial\b|\bpress\b)/i
+    },
+    official: {
+      domains: [
+        'who.int', 'oecd.org', 'ec.europa.eu', 'europa.eu', 'agid.gov.it',
+        'salute.gov.it', 'agenas.gov.it', 'nih.gov', 'cdc.gov', 'fda.gov',
+        'unesco.org', 'un.org', 'worldbank.org', 'iso.org', 'w3.org'
+      ],
+      pathOrTitle: /(?:\.gov(?:\.[a-z]{2})?(?:\/|$)|\.europa\.eu(?:\/|$)|\.int(?:\/|$)|\.org(?:\/|$)|\/docs\/|\/documentation\/|\/publications\/|\/policy\/|\/guidelines\/)/i
+    }
+  };
+
+  function matchesSourceFilters(item, filters) {
+    if (!Array.isArray(filters) || filters.length === 0) return true;
+    const urlStr = typeof item === 'string' ? item : String((item && item.url) || '');
+    const titleStr = typeof item === 'object' && item ? String(item.title || '') : '';
+    let hostname = '';
+    try {
+      hostname = new URL(urlStr).hostname.toLowerCase();
+    } catch (_) {
+      return false;
+    }
+    const combined = `${urlStr} ${titleStr}`;
+
+    return filters.some((key) => {
+      const rule = SOURCE_FILTER_RULES[key];
+      if (!rule) return false;
+      if (rule.domains.some(d => hostname.includes(d))) return true;
+      return rule.pathOrTitle.test(combined);
+    });
+  }
+
+  function applySourceFiltersToQuery(query, filters) {
+    const clean = String(query || '').trim();
+    if (!clean || !Array.isArray(filters) || filters.length === 0) return clean;
+    const clauses = [];
+    if (filters.includes('forums')) {
+      clauses.push('site:reddit.com OR site:quora.com OR site:news.ycombinator.com OR forum OR opinioni');
+    }
+    if (filters.includes('papers')) {
+      clauses.push('site:arxiv.org OR site:pmc.ncbi.nlm.nih.gov OR site:sciencedirect.com OR site:springer.com OR site:researchgate.net OR filetype:pdf');
+    }
+    if (filters.includes('news')) {
+      clauses.push('news OR article OR articolo OR giornale OR editorial');
+    }
+    if (filters.includes('official')) {
+      clauses.push('site:.gov OR site:.europa.eu OR site:.org');
+    }
+    if (!clauses.length) return clean;
+    return `${clean} (${clauses.join(' OR ')})`;
+  }
+
+  async function clickDuckDuckGoMoreResults(tabId) {
+    try {
+      const res = await browser.scripting.executeScript({
+        target: { tabId },
+        func: () => {
+          const btn = document.querySelector('button#more-results, a.result--more__btn, button[data-testid="more-results"]');
+          if (!btn || btn.disabled) return false;
+          btn.click();
+          return true;
+        }
+      });
+      return Boolean(res && res[0] && res[0].result);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function buildPaginatedSearchUrl(baseUrl, pageIndex) {
+    try {
+      const u = new URL(baseUrl);
+      const h = u.hostname.toLowerCase();
+      if (h.includes('scholar.google.') || (h.includes('google.') && u.pathname.includes('/search'))) {
+        u.searchParams.set('start', String(pageIndex * 10));
+        return u.href;
+      }
+      if (h.includes('bing.com') && u.pathname.includes('/search')) {
+        u.searchParams.set('first', String(pageIndex * 10 + 1));
+        return u.href;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /**
+   * Opens the top N search result pages from either a query or the active search tab,
+   * automatically paginating across result pages when count > 10.
+   */
+  async function openTopSearchResults({ query = '', engine = 'duckduckgo', count = 5, sourceFilters = [], waitForLoad = false } = {}) {
+    const maxCount = Math.max(1, Math.min(50, Number(count) || 5));
+    const activeFilters = Array.isArray(sourceFilters) ? sourceFilters.filter(Boolean) : [];
+    const perPageExtractLimit = activeFilters.length > 0 ? 50 : maxCount;
+    let sourceTabId = null;
+    let sourceUrl = '';
+    let createdSearchTabId = null;
+
+    if (String(query || '').trim()) {
+      const builder = SEARCH_ENGINES[engine] || SEARCH_ENGINES.duckduckgo;
+      const filteredQuery = applySourceFiltersToQuery(query, activeFilters);
+      const targetUrl = builder(filteredQuery);
+      const searchTab = await browser.tabs.create({ url: targetUrl, active: false });
+      sourceTabId = searchTab.id;
+      sourceUrl = targetUrl;
+      createdSearchTabId = searchTab.id;
+      await waitForTabComplete(searchTab.id, 12000);
+      await new Promise(r => setTimeout(r, 450));
+    } else {
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      const activeTab = tabs && tabs[0];
+      if (!activeTab || !activeTab.id || !/^https?:\/\//i.test(activeTab.url || '')) {
+        return { ok: false, error: 'Open a web search page (Google, DuckDuckGo, Bing, Scholar) first.' };
+      }
+      sourceTabId = activeTab.id;
+      sourceUrl = activeTab.url || '';
+    }
+
+    const collected = [];
+    const seen = new Set();
+    const addBatch = (batch) => {
+      let added = 0;
+      for (const item of batch || []) {
+        const url = typeof item === 'string' ? item : String((item && item.url) || '');
+        const norm = url.split('#')[0];
+        if (!norm || seen.has(norm)) continue;
+        seen.add(norm);
+        if (!matchesSourceFilters(item, activeFilters)) continue;
+        collected.push(url);
+        added += 1;
+        if (collected.length >= maxCount) break;
+      }
+      return added;
+    };
+
+    try {
+      addBatch(await extractSearchResultUrlsFromTab(sourceTabId, perPageExtractLimit));
+
+      // If more results are needed (>10 or filtered), paginate in background without disturbing the user's active tab
+      if (collected.length < maxCount) {
+        const isDdg = /duckduckgo\.com/i.test(sourceUrl);
+        if (isDdg) {
+          let ddgTabId = createdSearchTabId;
+          if (!ddgTabId) {
+            const cloneTab = await browser.tabs.create({ url: sourceUrl, active: false });
+            ddgTabId = cloneTab.id;
+            createdSearchTabId = cloneTab.id;
+            await waitForTabComplete(ddgTabId, 12000);
+            await new Promise(r => setTimeout(r, 450));
+          }
+          for (let step = 0; step < 6 && collected.length < maxCount; step++) {
+            const clicked = await clickDuckDuckGoMoreResults(ddgTabId);
+            if (!clicked) break;
+            await new Promise(r => setTimeout(r, 950));
+            const batch = await extractSearchResultUrlsFromTab(ddgTabId, perPageExtractLimit);
+            addBatch(batch);
+            if (!batch || batch.length === 0) break;
+          }
+        } else {
+          for (let pageIdx = 1; pageIdx <= 5 && collected.length < maxCount; pageIdx++) {
+            const nextUrl = buildPaginatedSearchUrl(sourceUrl, pageIdx);
+            if (!nextUrl) break;
+            let pageTabId = null;
+            try {
+              const pageTab = await browser.tabs.create({ url: nextUrl, active: false });
+              pageTabId = pageTab.id;
+              await waitForTabComplete(pageTabId, 12000);
+              await new Promise(r => setTimeout(r, 350));
+              const batch = await extractSearchResultUrlsFromTab(pageTabId, perPageExtractLimit);
+              addBatch(batch);
+              if (!batch || batch.length === 0) break;
+            } finally {
+              if (pageTabId) {
+                await browser.tabs.remove(pageTabId).catch(() => {});
+              }
+            }
+          }
+        }
+      }
+    } finally {
+      if (createdSearchTabId) {
+        await browser.tabs.remove(createdSearchTabId).catch(() => {});
+      }
+    }
+
+    const urls = collected.slice(0, maxCount);
+    if (!urls.length) {
+      return {
+        ok: false,
+        error: activeFilters.length > 0
+          ? 'No search results matched the selected source filters.'
+          : 'No search result links found on the page.'
+      };
+    }
+
+    const openedTabIds = [];
+    for (const url of urls) {
+      try {
+        const created = await browser.tabs.create({ url, active: false });
+        if (created && created.id) openedTabIds.push(created.id);
+      } catch (_) {}
+    }
+
+    if (waitForLoad && openedTabIds.length > 0) {
+      await Promise.all(openedTabIds.map(id => waitForTabComplete(id, 12000)));
+    }
+
+    return {
+      ok: true,
+      openedCount: openedTabIds.length,
+      urls,
+      tabIds: openedTabIds
+    };
+  }
+
   function arrayBufferToBase64(buffer) {
     const bytes = new Uint8Array(buffer);
     const chunkSize = 0x8000;
@@ -785,6 +1158,10 @@
 
       if (msg.type === 'LAUNCH_GUIDED_SEARCH') {
         return launchGuidedSearch(msg.query, msg.engine);
+      }
+
+      if (msg.type === 'OPEN_TOP_SEARCH_RESULTS') {
+        return openTopSearchResults(msg);
       }
 
       if (msg.type === 'REFRESH_BADGE') {

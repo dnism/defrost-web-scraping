@@ -8,15 +8,21 @@
   const els = {
     // Navigation Rail
     railNavDashboard: document.getElementById('railNavDashboard'),
+    railNavTabOpener: document.getElementById('railNavTabOpener'),
     railNavDocs: document.getElementById('railNavDocs'),
     railNavExport: document.getElementById('railNavExport'),
     railNavSettings: document.getElementById('railNavSettings'),
 
     // Views
     viewDashboard: document.getElementById('viewDashboard'),
+    viewTabOpener: document.getElementById('viewTabOpener'),
+    tabOpenerFiltersBar: document.getElementById('tabOpenerFiltersBar'),
     viewDocs: document.getElementById('viewDocs'),
     viewExport: document.getElementById('viewExport'),
     viewSettings: document.getElementById('viewSettings'),
+    tabOpenerQueryInput: document.getElementById('tabOpenerQueryInput'),
+    tabOpenerResultsWrap: document.getElementById('tabOpenerResultsWrap'),
+    tabOpenerResultsList: document.getElementById('tabOpenerResultsList'),
 
     // Project Header
     projectSelectContainer: document.getElementById('projectSelectContainer'),
@@ -31,7 +37,6 @@
 
     // KPI Banner
     statExtracts: document.getElementById('statExtracts'),
-    statLiveStatus: document.getElementById('statLiveStatus'),
     statSources: document.getElementById('statSources'),
     statLiveMatches: document.getElementById('statLiveMatches'),
     footerStatusPill: document.getElementById('footerStatusPill'),
@@ -67,6 +72,9 @@
     scanActiveLabel: document.getElementById('scanActiveLabel'),
     scanLiveDot: document.getElementById('scanLiveDot'),
     btnScanAllTabs: document.getElementById('btnScanAllTabs'),
+    topResultsCountInput: document.getElementById('topResultsCountInput'),
+    btnOpenTopResults: document.getElementById('btnOpenTopResults'),
+    toggleAutoScanTopResults: document.getElementById('toggleAutoScanTopResults'),
     btnClipSelection: document.getElementById('btnClipSelection'),
     btnClearHighlights: document.getElementById('btnClearHighlights'),
     btnScanVisualsAi: document.getElementById('btnScanVisualsAi'),
@@ -125,6 +133,7 @@
   function switchView(viewName) {
     const navMap = {
       dashboard: { btn: els.railNavDashboard, view: els.viewDashboard },
+      tabOpener: { btn: els.railNavTabOpener, view: els.viewTabOpener },
       docs: { btn: els.railNavDocs, view: els.viewDocs },
       export: { btn: els.railNavExport, view: els.viewExport },
       settings: { btn: els.railNavSettings, view: els.viewSettings }
@@ -148,6 +157,9 @@
   }
 
   els.railNavDashboard.addEventListener('click', () => switchView('dashboard'));
+  if (els.railNavTabOpener) {
+    els.railNavTabOpener.addEventListener('click', () => switchView('tabOpener'));
+  }
   els.railNavDocs.addEventListener('click', () => switchView('docs'));
   els.railNavExport.addEventListener('click', () => switchView('export'));
   els.railNavSettings.addEventListener('click', () => switchView('settings'));
@@ -188,15 +200,11 @@
       els.btnScanActive.classList.add('btn-scan-running');
       els.scanLiveDot.classList.remove('hidden');
       els.scanActiveLabel.textContent = 'Stop scan';
-      els.statLiveStatus.textContent = 'Live active';
-      els.statLiveStatus.style.background = 'rgba(88, 123, 127, 0.18)';
       els.footerStatusPill.textContent = 'Live scanner running...';
     } else {
       els.btnScanActive.classList.remove('btn-scan-running');
       els.scanLiveDot.classList.add('hidden');
       els.scanActiveLabel.textContent = 'Continuous scan';
-      els.statLiveStatus.textContent = 'Idle';
-      els.statLiveStatus.style.background = '';
       els.footerStatusPill.textContent = 'Defrost Ready';
     }
   }
@@ -573,26 +581,43 @@
 
     // Recommended public search queries
     els.geminiWebQueriesList.textContent = '';
+    const topCount = getTopResultsCount();
     (strategy.webQueries || []).forEach(wq => {
-      const btn = document.createElement('button');
-      btn.className = 'query-chip-btn';
-      btn.title = 'Open web search query in a new tab';
+      const row = document.createElement('div');
+      row.className = 'query-chip-row';
+
       const qSpan = document.createElement('span');
       qSpan.className = 'query-text-span';
       qSpan.textContent = wq;
-      const hintSpan = document.createElement('span');
-      hintSpan.className = 'query-open-hint';
-      hintSpan.textContent = 'Search';
-      btn.appendChild(qSpan);
-      btn.appendChild(hintSpan);
-      btn.addEventListener('click', async () => {
+
+      const actions = document.createElement('div');
+      actions.className = 'query-chip-actions';
+
+      const searchBtn = document.createElement('button');
+      searchBtn.type = 'button';
+      searchBtn.className = 'query-action-btn';
+      searchBtn.title = 'Open web search query in a new tab';
+      searchBtn.textContent = 'Search';
+      searchBtn.addEventListener('click', async () => {
         await browser.runtime.sendMessage({
           type: 'LAUNCH_GUIDED_SEARCH',
           query: wq,
           engine: 'duckduckgo'
         });
       });
-      els.geminiWebQueriesList.appendChild(btn);
+
+      const topBtn = document.createElement('button');
+      topBtn.type = 'button';
+      topBtn.className = 'query-action-btn primary query-top-n-btn';
+      topBtn.title = `Open the top ${topCount} search results for this query`;
+      topBtn.textContent = `Top ${topCount}`;
+      topBtn.addEventListener('click', () => handleOpenTopResults({ query: wq, engine: 'duckduckgo' }));
+
+      actions.appendChild(searchBtn);
+      actions.appendChild(topBtn);
+      row.appendChild(qSpan);
+      row.appendChild(actions);
+      els.geminiWebQueriesList.appendChild(row);
     });
   }
 
@@ -1360,8 +1385,43 @@
     }
   });
 
-  // Scan open tabs
-  els.btnScanAllTabs.addEventListener('click', async () => {
+  const activeTabSourceFilters = new Set();
+
+  function getActiveTabSourceFilters() {
+    return Array.from(activeTabSourceFilters);
+  }
+
+  if (els.tabOpenerFiltersBar) {
+    els.tabOpenerFiltersBar.addEventListener('click', (e) => {
+      const chip = e.target.closest('[data-source-filter]');
+      if (!chip) return;
+      const key = chip.getAttribute('data-source-filter');
+      if (!key) return;
+      if (activeTabSourceFilters.has(key)) {
+        activeTabSourceFilters.delete(key);
+        chip.classList.remove('active');
+      } else {
+        activeTabSourceFilters.add(key);
+        chip.classList.add('active');
+      }
+    });
+  }
+
+  function getTopResultsCount() {
+    const raw = els.topResultsCountInput ? Number(els.topResultsCountInput.value) : 5;
+    if (!Number.isFinite(raw) || raw < 1) return 5;
+    return Math.min(50, Math.floor(raw));
+  }
+
+  function updateQueryTopButtonsLabels() {
+    const count = getTopResultsCount();
+    document.querySelectorAll('.query-top-n-btn').forEach(btn => {
+      btn.textContent = `Top ${count}`;
+      btn.title = `Open the top ${count} search results for this query`;
+    });
+  }
+
+  async function runScanAllOpenTabs() {
     let exprs = els.expressionsInput.value.trim();
     if (!exprs && isInterpreterEnabled() && els.aiPromptInput.value.trim()) {
       const localPlan = window.ExpressionEngine && window.ExpressionEngine.buildScrapingPlanFromQuestion
@@ -1393,7 +1453,78 @@
     } else {
       showStatus('Error scanning open tabs.', true);
     }
-  });
+  }
+
+  async function handleOpenTopResults({ query = '', engine = 'duckduckgo' } = {}) {
+    const effectiveQuery = String(
+      query || (els.tabOpenerQueryInput ? els.tabOpenerQueryInput.value : '')
+    ).trim();
+    const count = getTopResultsCount();
+    if (els.topResultsCountInput) {
+      els.topResultsCountInput.value = String(count);
+    }
+    const autoScan = Boolean(els.toggleAutoScanTopResults && els.toggleAutoScanTopResults.checked);
+
+    if (els.btnOpenTopResults) els.btnOpenTopResults.disabled = true;
+    showStatus(
+      effectiveQuery
+        ? `Searching and opening top ${count} results...`
+        : `Opening top ${count} results from active search tab...`,
+      false,
+      0
+    );
+
+    try {
+      const res = await browser.runtime.sendMessage({
+        type: 'OPEN_TOP_SEARCH_RESULTS',
+        query: effectiveQuery,
+        engine,
+        count,
+        sourceFilters: getActiveTabSourceFilters(),
+        waitForLoad: autoScan
+      });
+      if (!res || !res.ok) {
+        showStatus((res && res.error) || 'Could not extract search result links.', true);
+        return;
+      }
+      if (els.tabOpenerResultsWrap && els.tabOpenerResultsList && Array.isArray(res.urls)) {
+        els.tabOpenerResultsList.textContent = '';
+        res.urls.forEach((u, idx) => {
+          const item = document.createElement('div');
+          item.className = 'tab-opener-url-item';
+          item.title = u;
+          item.textContent = `${idx + 1}) ${u}`;
+          els.tabOpenerResultsList.appendChild(item);
+        });
+        els.tabOpenerResultsWrap.classList.toggle('hidden', res.urls.length === 0);
+      }
+      if (autoScan) {
+        showStatus(`Opened ${res.openedCount} tabs. Scanning all open tabs...`, false, 0);
+        await runScanAllOpenTabs();
+      } else {
+        showStatus(`Opened ${res.openedCount} search result tabs in background.`);
+      }
+    } catch (err) {
+      showStatus(`Error opening search results: ${err.message}`, true);
+    } finally {
+      if (els.btnOpenTopResults) els.btnOpenTopResults.disabled = false;
+    }
+  }
+
+  if (els.topResultsCountInput) {
+    els.topResultsCountInput.addEventListener('input', updateQueryTopButtonsLabels);
+    els.topResultsCountInput.addEventListener('change', () => {
+      els.topResultsCountInput.value = String(getTopResultsCount());
+      updateQueryTopButtonsLabels();
+    });
+  }
+
+  if (els.btnOpenTopResults) {
+    els.btnOpenTopResults.addEventListener('click', () => handleOpenTopResults());
+  }
+
+  // Scan open tabs
+  els.btnScanAllTabs.addEventListener('click', runScanAllOpenTabs);
 
   // Clip selection
   els.btnClipSelection.addEventListener('click', async () => {

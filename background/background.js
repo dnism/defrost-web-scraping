@@ -276,7 +276,11 @@
               h.includes('maps.google.') ||
               (h.includes('google.') && (u.pathname.startsWith('/search') || u.pathname.startsWith('/preferences'))) ||
               (h.includes('bing.com') && (u.pathname.startsWith('/aclick') || u.pathname.startsWith('/search'))) ||
-              (h.includes('duckduckgo.com') && (u.pathname === '/' || u.pathname.startsWith('/y.js')))
+              (h.includes('duckduckgo.com') && (u.pathname === '/' || u.pathname.startsWith('/y.js'))) ||
+              h === 'insideduckduckgo.substack.com' ||
+              h === 'spreadprivacy.com' ||
+              h === 'duck.com' ||
+              (h.includes('reddit.com') && u.pathname.toLowerCase().startsWith('/r/duckduckgo'))
             ) {
               return true;
             }
@@ -286,18 +290,22 @@
           }
         };
 
-        const selectors = [
-          // Google Search
-          '#search a:has(h3), #rso a:has(h3)',
-          // DuckDuckGo
-          'article[data-testid="result"] a[data-testid="result-title-a"], a.result__a',
-          // Bing
-          '#b_results li.b_algo h2 a',
-          // Google Scholar
-          '#gs_res_ccl_mid .gs_rt a',
-          // Brave / Startpage / Ecosia / Generic fallback
-          'main a[href^="http"]:has(h2, h3), main a[href^="http"]'
-        ];
+        let selectors = [];
+        if (host.includes('scholar.google.')) {
+          selectors = ['#gs_res_ccl_mid .gs_rt a'];
+        } else if (host.includes('google.')) {
+          selectors = ['#search a:has(h3), #rso a:has(h3)'];
+        } else if (host.includes('duckduckgo.com')) {
+          selectors = [
+            'ol.react-results--main article[data-testid="result"] a[data-testid="result-title-a"]',
+            'article[data-testid="result"] a[data-testid="result-title-a"]',
+            'a.result__a'
+          ];
+        } else if (host.includes('bing.com')) {
+          selectors = ['#b_results li.b_algo h2 a'];
+        } else {
+          selectors = ['main a[href^="http"]:has(h2, h3), main a[href^="http"]'];
+        }
 
         const seen = new Set();
         const results = [];
@@ -305,7 +313,7 @@
           const nodes = Array.from(document.querySelectorAll(sel));
           for (const a of nodes) {
             if (!a || !a.getAttribute('href')) continue;
-            if (a.closest('[data-text-ad], .ads-ad, #tads, #bottomads, .b_ad, .result--ad')) continue;
+            if (a.closest('header, nav, footer, aside, [role="banner"], [role="navigation"], [role="contentinfo"], [data-text-ad], .ads-ad, #tads, #bottomads, .b_ad, .result--ad')) continue;
             const resolved = unwrapUrl(a.getAttribute('href'));
             if (!resolved || isNoiseUrl(resolved)) continue;
             const norm = resolved.split('#')[0];
@@ -358,7 +366,7 @@
         'fanpage.it', 'tg24.sky.it', 'agi.it', 'adnkronos.com', 'medium.com',
         'substack.com', 'apnews.com', 'cnn.com', 'economist.com', 'ft.com'
       ],
-      pathOrTitle: /(?:\/news\/|\/notizie\/|\/articolo\/|\/articoli\/|\/cronaca\/|\/economia\/|\/blog\/|\/story\/|\/202[0-9]\/|\bnews\b|\beditorial\b|\bpress\b)/i
+      pathOrTitle: /(?:\/news\/|\/notizie\/|\/articolo\/|\/articoli\/|\/cronaca\/|\/economia\/|\/blog\/|\/story\/|\/202[0-9]\/|\/[a-z0-9]+-[a-z0-9]+-[a-z0-9]+|\bnews\b|\beditorial\b|\bpress\b)/i
     },
     official: {
       domains: [
@@ -391,23 +399,27 @@
   }
 
   function applySourceFiltersToQuery(query, filters) {
-    const clean = String(query || '').trim();
+    const clean = String(query || '').trim().replace(/[?!]+$/g, '').trim();
     if (!clean || !Array.isArray(filters) || filters.length === 0) return clean;
-    const clauses = [];
-    if (filters.includes('forums')) {
-      clauses.push('site:reddit.com OR site:quora.com OR site:news.ycombinator.com OR forum OR opinioni');
+    // Only add lightweight query hints when a single filter is selected so long queries
+    // don't get broken by overly complex multi-filter site: OR chains.
+    if (filters.length === 1) {
+      if (filters[0] === 'forums') return `${clean} (reddit OR forum OR opinioni)`;
+      if (filters[0] === 'papers') return `${clean} (pubmed OR arxiv OR springer OR sciencedirect OR pdf)`;
+      if (filters[0] === 'news') return `${clean} (news OR articolo OR giornale)`;
+      if (filters[0] === 'official') return `${clean} (site:.gov OR site:.europa.eu OR site:.org)`;
     }
-    if (filters.includes('papers')) {
-      clauses.push('site:arxiv.org OR site:pmc.ncbi.nlm.nih.gov OR site:sciencedirect.com OR site:springer.com OR site:researchgate.net OR filetype:pdf');
+    return clean;
+  }
+
+  async function extractSearchResultsWithWait(tabId, limit, timeoutMs = 4500) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const batch = await extractSearchResultUrlsFromTab(tabId, limit);
+      if (batch && batch.length > 0) return batch;
+      await new Promise(r => setTimeout(r, 350));
     }
-    if (filters.includes('news')) {
-      clauses.push('news OR article OR articolo OR giornale OR editorial');
-    }
-    if (filters.includes('official')) {
-      clauses.push('site:.gov OR site:.europa.eu OR site:.org');
-    }
-    if (!clauses.length) return clean;
-    return `${clean} (${clauses.join(' OR ')})`;
+    return extractSearchResultUrlsFromTab(tabId, limit);
   }
 
   async function clickDuckDuckGoMoreResults(tabId) {
@@ -495,7 +507,7 @@
     };
 
     try {
-      addBatch(await extractSearchResultUrlsFromTab(sourceTabId, perPageExtractLimit));
+      addBatch(await extractSearchResultsWithWait(sourceTabId, perPageExtractLimit));
 
       // If more results are needed (>10 or filtered), paginate in background without disturbing the user's active tab
       if (collected.length < maxCount) {
@@ -507,7 +519,7 @@
             ddgTabId = cloneTab.id;
             createdSearchTabId = cloneTab.id;
             await waitForTabComplete(ddgTabId, 12000);
-            await new Promise(r => setTimeout(r, 450));
+            await extractSearchResultsWithWait(ddgTabId, perPageExtractLimit);
           }
           for (let step = 0; step < 6 && collected.length < maxCount; step++) {
             const clicked = await clickDuckDuckGoMoreResults(ddgTabId);
@@ -526,8 +538,7 @@
               const pageTab = await browser.tabs.create({ url: nextUrl, active: false });
               pageTabId = pageTab.id;
               await waitForTabComplete(pageTabId, 12000);
-              await new Promise(r => setTimeout(r, 350));
-              const batch = await extractSearchResultUrlsFromTab(pageTabId, perPageExtractLimit);
+              const batch = await extractSearchResultsWithWait(pageTabId, perPageExtractLimit, 3500);
               addBatch(batch);
               if (!batch || batch.length === 0) break;
             } finally {

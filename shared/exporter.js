@@ -257,7 +257,7 @@
     }
 
     const payload = {
-      $schema: 'https://researchtools.local/schemas/lexiscrape-dossier-v1.json',
+      $schema: 'https://researchtools.local/schemas/defrostscraping-dossier-v1.json',
       schemaVersion: '1.0.0',
       exportedAt: new Date().toISOString(),
       legalCompliance: {
@@ -377,7 +377,7 @@
     }
 
     const dateStamp = new Date().toISOString().slice(0, 10);
-    const filename = `lexiscrape-${slugify(project.name)}-${dateStamp}.${ext}`;
+    const filename = `defrostscraping-${slugify(project.name)}-${dateStamp}.${ext}`;
 
     if (typeof Blob !== 'undefined' && typeof URL !== 'undefined' && URL.createObjectURL) {
       const blob = new Blob([content], { type: mimeType });

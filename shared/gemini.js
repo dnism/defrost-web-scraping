@@ -224,11 +224,25 @@
     return { rawText: text, usedModel: cfg.model };
   }
 
-  async function callAnthropicProvider(cleanKey, promptText, systemText = '') {
+  async function callAnthropicProvider(cleanKey, promptText, systemText = '', mediaPayload = null) {
+    const content = mediaPayload && mediaPayload.base64Data && String(mediaPayload.mimeType || '').startsWith('image/')
+      ? [
+          {
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: mediaPayload.mimeType,
+              data: mediaPayload.base64Data
+            }
+          },
+          { type: 'text', text: promptText }
+        ]
+      : promptText;
+
     const reqBody = {
       model: 'claude-3-5-haiku-latest',
       max_tokens: 1600,
-      messages: [{ role: 'user', content: promptText }]
+      messages: [{ role: 'user', content }]
     };
     if (systemText) {
       reqBody.system = systemText;
@@ -493,6 +507,10 @@
       s = s.slice(0, lastValidCommaOrOpen);
     }
     s = s.replace(/,\s*$/, '').replace(/:\s*$/, ': null');
+    // Drop dangling object key without colon/value at EOF (e.g. {"a":1, "key")
+    if (/,\s*"[^"]*"\s*$/.test(s)) {
+      s = s.replace(/,\s*"[^"]*"\s*$/, '');
+    }
     // Re-scan remaining open brackets
     const remStack = [];
     let remStr = false;
@@ -517,7 +535,10 @@
 
   function parseGeminiJson(rawText) {
     let cleanedJson = String(rawText || '').trim();
-    if (cleanedJson.includes('```')) {
+    const fenceMatch = cleanedJson.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fenceMatch && fenceMatch[1]) {
+      cleanedJson = fenceMatch[1].trim();
+    } else if (cleanedJson.includes('```')) {
       cleanedJson = cleanedJson.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
     }
     try {
@@ -885,7 +906,8 @@ Output STRICT compact JSON matching this exact shape (1 keyword per string eleme
     const { provider, cleanKey, ollamaUrl, targetModel, visionModel } = auth;
     const effectiveModel = provider === 'ollama' ? (visionModel || targetModel) : targetModel;
     const exprHint = String((mediaPayload && mediaPayload.expressions) || '').trim().slice(0, 300);
-    const cacheKey = `${provider}::${ollamaUrl}::${effectiveModel}::${mimeType}::${base64Data.length}::${base64Data.slice(0, 48)}::${base64Data.slice(-24)}::${exprHint}`;
+    const midIdx = Math.floor(base64Data.length / 2);
+    const cacheKey = `${provider}::${ollamaUrl}::${effectiveModel}::${mimeType}::${base64Data.length}::${base64Data.slice(0, 48)}::${base64Data.slice(midIdx, midIdx + 32)}::${base64Data.slice(-24)}::${exprHint}`;
     const cached = visualCache.get(cacheKey);
     if (cached) {
       return { ok: true, result: cached, cached: true };
@@ -928,6 +950,9 @@ Set "hasMeaningfulContent" to false ONLY for empty spacers, purely decorative st
           },
           28000
         );
+        rawText = gen.rawText;
+      } else if (provider === 'anthropic') {
+        const gen = await callAnthropicProvider(cleanKey, promptText, '', { base64Data, mimeType });
         rawText = gen.rawText;
       } else {
         const gen = await callOpenAiCompatibleProvider(provider, cleanKey, promptText, { base64Data, mimeType }, true);

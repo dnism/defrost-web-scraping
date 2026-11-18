@@ -7,6 +7,9 @@
 (function (root) {
   'use strict';
 
+  if (root.__lexiScrapeContentInitialized) return;
+  root.__lexiScrapeContentInitialized = true;
+
   const NOISE_TAGS = new Set([
     'SCRIPT', 'STYLE', 'NOSCRIPT', 'IFRAME', 'SVG', 'CANVAS', 'VIDEO', 'AUDIO',
     'NAV', 'FOOTER', 'HEADER', 'ASIDE', 'FORM', 'BUTTON', 'INPUT', 'SELECT',
@@ -28,6 +31,8 @@
     observer: null,
     scrollListener: null,
     debounceTimer: null,
+    idleCallbackId: null,
+    firstPendingAt: 0,
     seenFingerprints: new Set(),
     matchedCount: 0
   };
@@ -506,18 +511,20 @@
       if (processedMedia.has(img)) continue;
       const alt = (img.getAttribute('alt') || img.getAttribute('aria-label') || img.getAttribute('title') || '').replace(/\s+/g, ' ').trim();
       if (alt.length < 20) continue;
+      const url = img.currentSrc || img.src || '';
+      const sigKey = `img:${url.slice(0, 80)}:${alt.length}`;
+      if (seenMap && seenMap.get(img) === sigKey) continue;
       if (hasNoiseAncestor(img, startRoot) || isNoiseElement(img) || !isElementVisible(img)) continue;
       const rect = img.getBoundingClientRect();
       const w = rect.width || img.naturalWidth || 0;
       const h = rect.height || img.naturalHeight || 0;
       if (w < 80 || h < 50) continue;
-      const url = img.currentSrc || img.src || '';
       addVisualCandidate(
         img,
         alt,
         'image',
         { kind: 'image', url, alt, width: Math.round(w), height: Math.round(h) },
-        `img:${url.slice(0, 80)}:${alt.length}`
+        sigKey
       );
     }
 
@@ -525,17 +532,21 @@
     const svgs = startRoot.querySelectorAll('svg');
     for (const svg of svgs) {
       if (processedMedia.has(svg)) continue;
+      // Fast pre-check before any layout/visibility query: skip icon SVGs with no accessible text
+      if (!svg.getAttribute('aria-label') && !svg.querySelector('title, desc, text')) continue;
+      const svgText = extractSvgReadableText(svg);
+      if (svgText.length < 20) continue;
+      const sigKey = `svg:${svgText.length}:${svgText.slice(0, 40)}`;
+      if (seenMap && seenMap.get(svg) === sigKey) continue;
       if (hasNoiseAncestor(svg, startRoot) || !isElementVisible(svg)) continue;
       const rect = svg.getBoundingClientRect();
       if (rect.width < 100 || rect.height < 65) continue;
-      const svgText = extractSvgReadableText(svg);
-      if (svgText.length < 20) continue;
       addVisualCandidate(
         svg,
         svgText,
         'svg',
         { kind: 'svg', url: window.location.href, width: Math.round(rect.width), height: Math.round(rect.height) },
-        `svg:${Math.round(rect.width)}x${Math.round(rect.height)}:${svgText.length}`
+        sigKey
       );
     }
 
@@ -543,17 +554,19 @@
     const canvases = startRoot.querySelectorAll('canvas');
     for (const canvas of canvases) {
       if (processedMedia.has(canvas)) continue;
+      const label = (canvas.getAttribute('aria-label') || canvas.getAttribute('title') || canvas.textContent || '').replace(/\s+/g, ' ').trim();
+      if (label.length < 20) continue;
+      const sigKey = `cvs:${label.length}:${label.slice(0, 40)}`;
+      if (seenMap && seenMap.get(canvas) === sigKey) continue;
       if (hasNoiseAncestor(canvas, startRoot) || !isElementVisible(canvas)) continue;
       const rect = canvas.getBoundingClientRect();
       if (rect.width < 100 || rect.height < 65) continue;
-      const label = (canvas.getAttribute('aria-label') || canvas.getAttribute('title') || canvas.textContent || '').replace(/\s+/g, ' ').trim();
-      if (label.length < 20) continue;
       addVisualCandidate(
         canvas,
         label,
         'canvas',
         { kind: 'canvas', url: window.location.href, width: Math.round(rect.width), height: Math.round(rect.height) },
-        `cvs:${Math.round(rect.width)}x${Math.round(rect.height)}:${label.length}`
+        sigKey
       );
     }
 
@@ -702,6 +715,7 @@
   /**
    * Evaluates extracted blocks against the expressions and decorates matches.
    */
+  let blockLocalIdCounter = 0;
   function evaluateBlocks(blocks, expressions, options, onMatch) {
     const minScore = typeof options.minScore === 'number' ? options.minScore : 10;
     const highlight = options.highlight !== false;
@@ -717,7 +731,7 @@
       if (!evalRes.matched || evalRes.score < minScore) continue;
 
       const extractItem = {
-        localId: `blk_${stamp}_${idx}`,
+        localId: `blk_${stamp}_${++blockLocalIdCounter}`,
         text: blk.text,
         heading: blk.heading,
         blockType: blk.blockType,
@@ -776,6 +790,9 @@
    */
   function startContinuousScanning(expressions, options = {}) {
     stopContinuousScanning(); // Reset precedente se attivo
+    if (!document.body) {
+      return { ok: false, active: false, error: 'Document body not available.' };
+    }
 
     const seenMap = new WeakMap();
     const scanOptions = { ...options, seenMap };
@@ -841,8 +858,12 @@
       const waited = now - continuousState.firstPendingAt;
       clearTimeout(continuousState.debounceTimer);
       continuousState.debounceTimer = setTimeout(() => {
+        continuousState.debounceTimer = null;
         if (typeof window.requestIdleCallback === 'function') {
-          window.requestIdleCallback(runIncrementalPass, { timeout: 800 });
+          continuousState.idleCallbackId = window.requestIdleCallback(() => {
+            continuousState.idleCallbackId = null;
+            runIncrementalPass();
+          }, { timeout: 800 });
         } else {
           runIncrementalPass();
         }
@@ -853,6 +874,7 @@
     const observer = new MutationObserver((mutations) => {
       for (const m of mutations) {
         if (!m.addedNodes || m.addedNodes.length === 0) continue;
+        if (m.target && m.target.nodeType === 1 && m.target.closest && m.target.closest('.lexiscrape-badge-bar')) continue;
         for (const n of m.addedNodes) {
           if (n.nodeType === 3 ? n.textContent.trim().length > 0 : (n.nodeType === 1 && !isOwnBadgeNode(n))) {
             scheduleIncrementalPass();
@@ -882,6 +904,10 @@
       clearTimeout(continuousState.debounceTimer);
       continuousState.debounceTimer = null;
     }
+    if (continuousState.idleCallbackId !== null && typeof window.cancelIdleCallback === 'function') {
+      window.cancelIdleCallback(continuousState.idleCallbackId);
+      continuousState.idleCallbackId = null;
+    }
     if (continuousState.observer) {
       continuousState.observer.disconnect();
       continuousState.observer = null;
@@ -890,6 +916,8 @@
       window.removeEventListener('scroll', continuousState.scrollListener);
       continuousState.scrollListener = null;
     }
+    continuousState.seenFingerprints.clear();
+    continuousState.options = {};
     return { ok: true, active: false };
   }
 
@@ -930,7 +958,7 @@
 
   function scrollToBlock(localId) {
     const el = highlightedNodesMap.get(localId);
-    if (el && el.scrollIntoView) {
+    if (el && el.isConnected && el.scrollIntoView) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       el.classList.remove('lexiscrape-pulse-focus');
       void el.offsetWidth;
@@ -1014,10 +1042,15 @@
       if (parts.mimeType === 'image/svg+xml') {
         return new Promise((resolve) => {
           const img = new Image();
+          const timer = setTimeout(() => resolve(null), 2000);
           img.onload = () => {
+            clearTimeout(timer);
             try { resolve(rasterizeImageToPngBase64(img)); } catch (_) { resolve(null); }
           };
-          img.onerror = () => resolve(null);
+          img.onerror = () => {
+            clearTimeout(timer);
+            resolve(null);
+          };
           img.src = url;
         });
       }
@@ -1046,6 +1079,11 @@
    * When targetSrcUrl is given, resolves metadata/element for that exact image (used by context menu).
    */
   async function collectVisualCandidatesForAi(opts = {}) {
+    // Prune disconnected DOM references to prevent memory leaks across SPA navigations
+    for (const [id, node] of visualCandidateNodes.entries()) {
+      if (!node || !node.isConnected) visualCandidateNodes.delete(id);
+    }
+
     const maxItems = typeof opts.maxItems === 'number' ? opts.maxItems : 5;
     const minWidth = typeof opts.minWidth === 'number' ? opts.minWidth : 100;
     const minHeight = typeof opts.minHeight === 'number' ? opts.minHeight : 70;

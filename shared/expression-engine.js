@@ -32,7 +32,8 @@
     'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had',
     'do', 'does', 'did', 'will', 'would', 'shall', 'should', 'can', 'could',
     'this', 'that', 'these', 'those', 'it', 'its', 'they', 'them', 'their',
-    'what', 'which', 'who', 'whom', 'how', 'when', 'where', 'why'
+    'what', 'which', 'who', 'whom', 'how', 'when', 'where', 'why',
+    'and', 'or', 'not'
   ]);
 
   /**
@@ -49,6 +50,21 @@
       .toLowerCase();
   }
 
+  // Suffissi derivazionali e flessivi comuni IT/EN (ordinati dal più lungo)
+  const STEM_SUFFIXES = [
+    'izzazione', 'izzazioni', 'amento', 'amenti', 'imento', 'imenti',
+    'azione', 'azioni', 'izione', 'izioni', 'uzione', 'uzioni',
+    'atrice', 'atrici', 'atore', 'atori', 'mente',
+    'abile', 'abili', 'ibile', 'ibili', 'evole', 'evoli',
+    'iche', 'ichi', 'eschi', 'esche', 'ismi', 'ismo', 'ista', 'isti', 'iste',
+    'ando', 'endo', 'ano', 'ono', 'ava', 'eva', 'iva', 'ato', 'ito', 'uto',
+    'ata', 'ita', 'uta', 'ati', 'iti', 'uti', 'ate', 'ite', 'ute',
+    'ing', 'tion', 'tions', 'ness', 'ment', 'ments', 'able', 'ible',
+    'che', 'chi', 'cia', 'cie', 'gia', 'gie', 'ico', 'ica', 'ici',
+    'ies', 'es', 'ed', 'er', 'ly',
+    'a', 'e', 'i', 'o', 's'
+  ];
+
   /**
    * Stemmer leggero morfologico per Italiano e Inglese.
    * Permette a "rinnovabili" di fare match con "rinnovabile",
@@ -58,22 +74,7 @@
     const clean = normalizeDiacritics(word).replace(/[^a-z0-9]/g, '');
     if (clean.length <= 4) return clean;
 
-    // Suffissi derivazionali e flessivi comuni IT/EN (ordinati dal più lungo)
-    const suffixes = [
-      'izzazione', 'izzazioni', 'amento', 'amenti', 'imento', 'imenti',
-      'azione', 'azioni', 'izione', 'izioni', 'uzione', 'uzioni',
-      'atrice', 'atrici', 'atore', 'atori', 'mente',
-      'abile', 'abili', 'ibile', 'ibili', 'evole', 'evoli',
-      'iche', 'ichi', 'eschi', 'esche', 'ismi', 'ismo', 'ista', 'isti', 'iste',
-      'ando', 'endo', 'ano', 'ono', 'ava', 'eva', 'iva', 'ato', 'ito', 'uto',
-      'ata', 'ita', 'uta', 'ati', 'iti', 'uti', 'ate', 'ite', 'ute',
-      'ing', 'tion', 'tions', 'ness', 'ment', 'ments', 'able', 'ible',
-      'che', 'chi', 'cia', 'cie', 'gia', 'gie', 'ico', 'ica', 'ici',
-      'ies', 'es', 'ed', 'er', 'ly',
-      'a', 'e', 'i', 'o', 's'
-    ];
-
-    for (const suf of suffixes) {
+    for (const suf of STEM_SUFFIXES) {
       if (clean.endsWith(suf) && clean.length - suf.length >= 4) {
         return clean.slice(0, clean.length - suf.length);
       }
@@ -204,7 +205,7 @@
     });
 
     // 2. Estrai gruppi OR tra parentesi es. (termA OR "synonym A") AND (termB OR termC)
-    working = working.replace(/\(([^()]*\b(?:OR|\|)\b[^()]*)\)/gi, (_, innerGroup) => {
+    working = working.replace(/\(([^()]*(?:\bOR\b|\|)[^()]*)\)/gi, (_, innerGroup) => {
       const parts = innerGroup
         .split(/\s+(?:OR|\|)\s+/i)
         .map(p => p.trim().replace(/^["«]+|["»]+$/g, '').trim())
@@ -249,21 +250,40 @@
       return ' ';
     });
 
-    // 5. Fallback per eventuale OR residuo mescolato ad AND
+    // 5. Fallback per eventuale OR residuo (anche mescolato ad AND: ogni clausola AND con OR diventa un orGroup)
+    const hasExplicitAnd = /\bAND\b/.test(working);
     if (/\bOR\b|\|/.test(working)) {
-      const parts = working
-        .split(/\s+(?:OR|\|)\s+/i)
-        .map(p => p.trim().replace(/[()]/g, '').trim())
-        .filter(Boolean);
-      if (parts.length > 1) {
-        parsed.orGroups.push(parts.map(p => buildConceptMatcher(p)));
-        working = '';
+      if (!hasExplicitAnd) {
+        const parts = working
+          .split(/\s+(?:OR|\|)\s+/i)
+          .map(p => p.trim().replace(/[()]/g, '').trim())
+          .filter(Boolean);
+        if (parts.length > 1) {
+          parsed.orGroups.push(parts.map(p => buildConceptMatcher(p)));
+          working = '';
+        }
+      } else {
+        const andClauses = working.split(/\s+\bAND\b\s+/);
+        const remainingClauses = [];
+        for (const clause of andClauses) {
+          if (/\bOR\b|\|/.test(clause)) {
+            const parts = clause
+              .split(/\s+(?:OR|\|)\s+/i)
+              .map(p => p.trim().replace(/[()]/g, '').trim())
+              .filter(Boolean);
+            if (parts.length > 1) {
+              parsed.orGroups.push(parts.map(p => buildConceptMatcher(p)));
+              continue;
+            }
+          }
+          remainingClauses.push(clause);
+        }
+        working = remainingClauses.join(' ');
       }
     }
 
-    // 6. Rimuovi operatore booleano esplicito AND (i concetti rimanenti vengono già valutati insieme)
-    const hasExplicitAnd = /\bAND\b/.test(working);
-    working = working.replace(/\bAND\b/g, ' ');
+    // 6. Rimuovi operatori booleani espliciti residui (AND, OR, NOT)
+    working = working.replace(/\b(?:AND|OR|NOT)\b/g, ' ');
 
     // 7. Estrai i token dell'espressione naturale rimanente
     const rawTokens = working
@@ -413,8 +433,11 @@
       }
       score += 25 + Math.min(matches.length * 5, 25);
       matches.slice(0, 8).forEach(m => {
-        matchedTerms.add(m.trim());
-        highlightSpans.add(m.trim());
+        const trimmed = m.trim();
+        if (trimmed) {
+          matchedTerms.add(trimmed);
+          highlightSpans.add(trimmed);
+        }
       });
     }
 
@@ -556,6 +579,7 @@
    */
   function collectOriginalMatches(originalText, normalizedText, normRegex, positionsOut) {
     const results = new Set();
+    const canSliceOriginal = originalText.length === normalizedText.length;
     let match;
     normRegex.lastIndex = 0;
     let safety = 0;
@@ -563,7 +587,7 @@
       const idx = match.index;
       const len = match[0].length;
       if (positionsOut) positionsOut.push(idx);
-      const origSlice = originalText.slice(idx, idx + len).trim();
+      const origSlice = (canSliceOriginal ? originalText.slice(idx, idx + len) : match[0]).trim();
       if (origSlice) results.add(origSlice);
       if (len === 0) normRegex.lastIndex++;
     }
@@ -757,8 +781,8 @@
       const trimmed = line.trim();
       if (!trimmed || /^\/.*\/[gimsuy]*$/.test(trimmed)) continue;
 
-      // Tokenize quoted exclusions, bare exclusions, quoted phrases, and standalone tokens
-      const tokenRegex = /-"([^"]+)"|-([^\s()]+)|"([^"]+)"|([^\s()]+)/g;
+      // Tokenize quoted exclusions, bare exclusions, +quoted phrases, quoted phrases, and standalone tokens
+      const tokenRegex = /-"([^"]+)"|-([^\s()]+)|\+"([^"]+)"|"([^"]+)"|([^\s()]+)/g;
       let match;
       while ((match = tokenRegex.exec(trimmed)) !== null) {
         if (match[1] !== undefined) {
@@ -768,7 +792,9 @@
         } else if (match[3] !== undefined) {
           addKw(match[3]);
         } else if (match[4] !== undefined) {
-          addKw(match[4].replace(/^[()]+|[()]+$/g, ''));
+          addKw(match[4]);
+        } else if (match[5] !== undefined) {
+          addKw(match[5].replace(/^[()+]+|[()]+$/g, ''));
         }
       }
     }

@@ -101,7 +101,7 @@
         <!-- KPI Banner -->
         <section class="kpi-banner">
           <div>
-            <div class="kpi-label">Research dossier</div>
+            <div class="kpi-label">Dossier</div>
             <div class="kpi-number-row">
               <span class="kpi-number" id="statExtracts">0</span>
             </div>
@@ -203,38 +203,36 @@
           <section class="neo-card">
             <div class="neo-card-header">
               <div class="card-title-group">
-                <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <circle cx="12" cy="12" r="10"/>
-                  <polyline points="12 6 12 12 16 14"/>
-                </svg>
                 <h2 class="neo-card-title">Extraction and scanner</h2>
               </div>
             </div>
 
-            <div class="field-group-stacked">
-              <label for="expressionsInput" class="field-label-micro">Active detection expressions:</label>
-              <textarea
-                id="expressionsInput"
-                class="ai-textarea expressions-box"
-                rows="4"
-                placeholder="Expressions or keywords (auto-populated from Interpreter or written manually)..."
-              ></textarea>
-            </div>
-
-            <div class="scanner-keywords-block">
-              <div class="scanner-keywords-header">
-                <span class="field-label-micro">Active keywords &amp; exclusions:</span>
-                <span id="scannerKeywordsCount" class="scanner-keywords-count">0</span>
+            <div class="scanner-rules-group">
+              <div class="field-group-stacked">
+                <label for="expressionsInput" class="field-label-micro">Detection expressions &amp; keywords:</label>
+                <textarea
+                  id="expressionsInput"
+                  class="ai-textarea expressions-box"
+                  rows="4"
+                  placeholder='Type keywords, "exact phrases", booleans (A OR B), -exclusions, or /regex/. Auto-filled by AI Interpreter, or edit directly here.'
+                ></textarea>
               </div>
-              <div id="scannerKeywordsList" class="scanner-tags-list"></div>
-              <div class="scanner-keyword-add-row">
-                <input
-                  type="text"
-                  id="scannerKeywordAddInput"
-                  class="scanner-keyword-input"
-                  placeholder="+ Add keyword or -exclusion (Enter)"
-                >
-                <button type="button" id="btnAddScannerKeyword" class="btn-frost-mini">+ Add</button>
+
+              <div class="scanner-keywords-block">
+                <div class="scanner-keywords-header">
+                  <span class="scanner-keywords-sublabel">Synced tags</span>
+                  <span id="scannerKeywordsCount" class="scanner-keywords-count">0</span>
+                </div>
+                <div id="scannerKeywordsList" class="scanner-tags-list"></div>
+                <div class="scanner-keyword-add-row">
+                  <input
+                    type="text"
+                    id="scannerKeywordAddInput"
+                    class="scanner-keyword-input"
+                    placeholder="Add keyword or -exclusion..."
+                  >
+                  <button type="button" id="btnAddScannerKeyword" class="btn-frost-mini">+ Add</button>
+                </div>
               </div>
             </div>
 
@@ -559,9 +557,9 @@
         </div>
       </div>
 
-      <!-- Footer with Version 0.2.3-alpha -->
+      <!-- Footer with Version 0.2.9-alpha -->
       <footer class="frost-footer">
-        <span class="version-frost">0.2.3-alpha</span>
+        <span class="version-frost">0.2.9-alpha</span>
         <span class="status-pill-frost" id="footerStatusPill">Defrost Ready</span>
       </footer>
     </main>

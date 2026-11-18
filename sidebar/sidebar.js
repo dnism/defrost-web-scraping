@@ -127,6 +127,9 @@
   let docsDirty = true;
   let visibleDocsLimit = 40;
   let lastProjectOptionsSig = '';
+  let lastStrategySig = '';
+  let lastSavedItemsSig = '';
+  let statusBannerTimer = null;
   const highlightRegexCache = new Map();
 
   // Rail Navigation
@@ -180,18 +183,25 @@
   });
 
   function showStatus(message, isError = false, timeoutMs = 5000) {
+    clearTimeout(statusBannerTimer);
     els.scanStatusBanner.textContent = message;
     els.scanStatusBanner.classList.remove('hidden');
     els.scanStatusBanner.style.color = isError ? '#dc2626' : 'var(--text-main)';
     els.footerStatusPill.textContent = message.slice(0, 36);
     if (timeoutMs > 0) {
-      setTimeout(() => {
+      statusBannerTimer = setTimeout(() => {
         if (els.scanStatusBanner.textContent === message) {
           els.scanStatusBanner.classList.add('hidden');
           els.footerStatusPill.textContent = isContinuousScanRunning ? 'Live Scanner Active' : 'Defrost Ready';
         }
       }, timeoutMs);
     }
+  }
+
+  function updateLiveMatchesCount(count) {
+    if (!els.statLiveMatches) return;
+    const safeCount = Number.isFinite(Number(count)) ? Math.max(0, Math.floor(Number(count))) : 0;
+    els.statLiveMatches.textContent = String(safeCount);
   }
 
   function updateContinuousScanButton(isActive) {
@@ -214,11 +224,14 @@
       const res = await browser.runtime.sendMessage({ type: 'GET_ACTIVE_TAB_CONTINUOUS_STATUS' });
       if (res && res.ok) {
         updateContinuousScanButton(res.active);
+        updateLiveMatchesCount(res.matchedCount || 0);
       } else {
         updateContinuousScanButton(false);
+        updateLiveMatchesCount(0);
       }
     } catch (_) {
       updateContinuousScanButton(false);
+      updateLiveMatchesCount(0);
     }
   }
 
@@ -275,10 +288,17 @@
           activeTargets.add(def.id);
         }
         strategy.targetElements = Array.from(activeTargets);
+        const includeVisuals = activeTargets.has('visuals');
         if (els.toggleIncludeVisuals) {
-          els.toggleIncludeVisuals.checked = activeTargets.has('visuals');
+          els.toggleIncludeVisuals.checked = includeVisuals;
         }
+        if (currentState) {
+          if (!currentState.settings) currentState.settings = {};
+          currentState.settings.includeLocalVisuals = includeVisuals;
+        }
+        lastStrategySig = '';
         renderTargetElementsBar(strategy);
+        await window.StorageManager.updateSettings({ includeLocalVisuals: includeVisuals });
         if (activeProject) {
           await window.StorageManager.updateProject(activeProject.id, { aiStrategy: strategy });
         }
@@ -316,6 +336,25 @@
     if (!Array.isArray(activeProject.aiStrategy.keyConcepts)) activeProject.aiStrategy.keyConcepts = [];
     if (!Array.isArray(activeProject.aiStrategy.primaryExpressions)) activeProject.aiStrategy.primaryExpressions = [];
     if (!Array.isArray(activeProject.aiStrategy.exclusions)) activeProject.aiStrategy.exclusions = [];
+
+    const rawExpr = els.expressionsInput ? els.expressionsInput.value.trim() : '';
+    if (
+      rawExpr &&
+      activeProject.aiStrategy.primaryExpressions.length === 0 &&
+      window.ExpressionEngine &&
+      window.ExpressionEngine.splitExpressions
+    ) {
+      activeProject.aiStrategy.primaryExpressions = window.ExpressionEngine.splitExpressions(rawExpr);
+      if (
+        activeProject.aiStrategy.keyConcepts.length === 0 &&
+        activeProject.aiStrategy.exclusions.length === 0 &&
+        window.ExpressionEngine.extractTermsFromExpressions
+      ) {
+        const parsed = window.ExpressionEngine.extractTermsFromExpressions(rawExpr);
+        activeProject.aiStrategy.keyConcepts = parsed.keywords || [];
+        activeProject.aiStrategy.exclusions = parsed.exclusions || [];
+      }
+    }
     return activeProject.aiStrategy;
   }
 
@@ -545,7 +584,30 @@
     );
   }
 
+  function getStrategyRenderSig(strategy) {
+    const rawExpr = els.expressionsInput ? els.expressionsInput.value : '';
+    const topCount = getTopResultsCount();
+    if (!strategy) {
+      return `null::${topCount}::${rawExpr}`;
+    }
+    const hasExplicitTerms = (strategy.keyConcepts && strategy.keyConcepts.length) || (strategy.exclusions && strategy.exclusions.length);
+    return JSON.stringify({
+      o: strategy.objective || '',
+      k: strategy.keyConcepts || [],
+      e: strategy.exclusions || [],
+      w: strategy.webQueries || [],
+      t: strategy.targetElements || [],
+      m: strategy.recommendedMinScore,
+      top: topCount,
+      expr: hasExplicitTerms ? '' : rawExpr
+    });
+  }
+
   function renderStrategyPreview(strategy) {
+    const sig = getStrategyRenderSig(strategy);
+    if (sig === lastStrategySig) return;
+    lastStrategySig = sig;
+
     renderTargetElementsBar(strategy);
     renderScannerKeywords(strategy);
     if (!strategy) {
@@ -599,11 +661,15 @@
       searchBtn.title = 'Open web search query in a new tab';
       searchBtn.textContent = 'Search';
       searchBtn.addEventListener('click', async () => {
-        await browser.runtime.sendMessage({
-          type: 'LAUNCH_GUIDED_SEARCH',
-          query: wq,
-          engine: 'duckduckgo'
-        });
+        try {
+          await browser.runtime.sendMessage({
+            type: 'LAUNCH_GUIDED_SEARCH',
+            query: wq,
+            engine: 'duckduckgo'
+          });
+        } catch (err) {
+          showStatus(`Search error: ${(err && err.message) || 'Unable to open tab'}`, true);
+        }
       });
 
       const topBtn = document.createElement('button');
@@ -757,9 +823,15 @@
   }
 
   function renderSavedItems() {
-    els.savedItemsList.textContent = '';
     const items = (activeProject && activeProject.items) || [];
     const filterQuery = (els.filterSavedInput.value || '').trim().toLowerCase();
+    const firstId = items[0] ? items[0].id : '';
+    const lastId = items.length > 0 ? items[items.length - 1].id : '';
+    const sig = `${activeProject ? activeProject.id : ''}::${items.length}::${firstId}::${lastId}::${filterQuery}::${visibleDocsLimit}`;
+    if (sig === lastSavedItemsSig) return;
+    lastSavedItemsSig = sig;
+
+    els.savedItemsList.textContent = '';
 
     const filtered = filterQuery
       ? items.filter(item => {
@@ -824,6 +896,7 @@
       delBtn.title = 'Remove this extract';
       delBtn.addEventListener('click', async () => {
         await window.StorageManager.deleteItem(activeProject.id, item.id);
+        lastSavedItemsSig = '';
         browser.runtime.sendMessage({ type: 'REFRESH_BADGE' }).catch(() => {});
         await refreshUI(true);
       });
@@ -1326,6 +1399,7 @@
 
   // CONTINUOUS SCAN TOGGLE
   els.btnScanActive.addEventListener('click', async () => {
+    clearTimeout(exprSaveTimer);
     let exprs = els.expressionsInput.value.trim();
     if (!exprs && !isContinuousScanRunning && isInterpreterEnabled() && els.aiPromptInput.value.trim()) {
       const localPlan = window.ExpressionEngine && window.ExpressionEngine.buildScrapingPlanFromQuestion
@@ -1352,36 +1426,48 @@
     }
 
     if (activeProject && exprs) {
+      activeProject.expressions = exprs;
       await window.StorageManager.updateProject(activeProject.id, { expressions: exprs });
     }
 
+    els.btnScanActive.disabled = true;
     showStatus(isContinuousScanRunning ? 'Stopping scan...' : 'Starting continuous scanner...', false, 0);
 
-    const res = await browser.runtime.sendMessage({
-      type: 'TOGGLE_CONTINUOUS_SCAN_ACTIVE_TAB',
-      expressions: exprs,
-      highlight: true,
-      minScore: getActiveMinScore(),
-      targetElements: getActiveTargetElements(),
-      includeVisuals: els.toggleIncludeVisuals ? els.toggleIncludeVisuals.checked : true,
-      autoAiOcr: els.toggleAutoAiOcr ? els.toggleAutoAiOcr.checked : false,
-      autoSave: true,
-      projectId: activeProject ? activeProject.id : null
-    });
+    try {
+      const res = await browser.runtime.sendMessage({
+        type: 'TOGGLE_CONTINUOUS_SCAN_ACTIVE_TAB',
+        expressions: exprs,
+        highlight: true,
+        minScore: getActiveMinScore(),
+        targetElements: getActiveTargetElements(),
+        includeVisuals: els.toggleIncludeVisuals ? els.toggleIncludeVisuals.checked : true,
+        autoAiOcr: els.toggleAutoAiOcr ? els.toggleAutoAiOcr.checked : false,
+        autoSave: true,
+        projectId: activeProject ? activeProject.id : null
+      });
 
-    if (!res || !res.ok) {
-      showStatus((res && res.error) || 'Unable to scan this page.', true);
+      if (!res || !res.ok) {
+        showStatus((res && res.error) || 'Unable to scan this page.', true);
+        updateContinuousScanButton(false);
+        return;
+      }
+
+      updateContinuousScanButton(res.active);
+      if (res.active) {
+        updateLiveMatchesCount(res.totalInitial || 0);
+      }
+      await refreshUI(true);
+
+      if (res.active) {
+        showStatus(`Continuous scan active. ${res.totalInitial || 0} initial blocks found.`);
+      } else {
+        showStatus('Continuous scan stopped for active tab.');
+      }
+    } catch (err) {
+      showStatus((err && err.message) || 'Unable to scan this page.', true);
       updateContinuousScanButton(false);
-      return;
-    }
-
-    updateContinuousScanButton(res.active);
-    await refreshUI(true);
-
-    if (res.active) {
-      showStatus(`Continuous scan active. ${res.totalInitial || 0} initial blocks found.`);
-    } else {
-      showStatus('Continuous scan stopped for active tab.');
+    } finally {
+      els.btnScanActive.disabled = false;
     }
   });
 
@@ -1415,6 +1501,7 @@
 
   function updateQueryTopButtonsLabels() {
     const count = getTopResultsCount();
+    lastStrategySig = '';
     document.querySelectorAll('.query-top-n-btn').forEach(btn => {
       btn.textContent = `Top ${count}`;
       btn.title = `Open the top ${count} search results for this query`;
@@ -1422,6 +1509,7 @@
   }
 
   async function runScanAllOpenTabs() {
+    clearTimeout(exprSaveTimer);
     let exprs = els.expressionsInput.value.trim();
     if (!exprs && isInterpreterEnabled() && els.aiPromptInput.value.trim()) {
       const localPlan = window.ExpressionEngine && window.ExpressionEngine.buildScrapingPlanFromQuestion
@@ -1436,22 +1524,29 @@
       showStatus('Enter an inquiry or expression before scanning open tabs.', true);
       return;
     }
+    if (els.btnScanAllTabs) els.btnScanAllTabs.disabled = true;
     showStatus('Scanning all open tabs with rate limiting...', false, 0);
-    const res = await browser.runtime.sendMessage({
-      type: 'SCAN_ALL_OPEN_TABS',
-      expressions: exprs,
-      highlight: true,
-      minScore: getActiveMinScore(),
-      targetElements: getActiveTargetElements(),
-      includeVisuals: els.toggleIncludeVisuals ? els.toggleIncludeVisuals.checked : true,
-      autoSave: true,
-      projectId: activeProject ? activeProject.id : null
-    });
-    await refreshUI(true);
-    if (res && res.ok) {
-      showStatus(`Scan complete: ${res.totalMatches} extracts found across ${res.scannedTabs} tabs.`);
-    } else {
-      showStatus('Error scanning open tabs.', true);
+    try {
+      const res = await browser.runtime.sendMessage({
+        type: 'SCAN_ALL_OPEN_TABS',
+        expressions: exprs,
+        highlight: true,
+        minScore: getActiveMinScore(),
+        targetElements: getActiveTargetElements(),
+        includeVisuals: els.toggleIncludeVisuals ? els.toggleIncludeVisuals.checked : true,
+        autoSave: true,
+        projectId: activeProject ? activeProject.id : null
+      });
+      await refreshUI(true);
+      if (res && res.ok) {
+        showStatus(`Scan complete: ${res.totalMatches} extracts found across ${res.scannedTabs} tabs.`);
+      } else {
+        showStatus((res && res.error) || 'Error scanning open tabs.', true);
+      }
+    } catch (err) {
+      showStatus(`Error scanning open tabs: ${(err && err.message) || 'Unknown error'}`, true);
+    } finally {
+      if (els.btnScanAllTabs) els.btnScanAllTabs.disabled = false;
     }
   }
 
@@ -1517,6 +1612,21 @@
       els.topResultsCountInput.value = String(getTopResultsCount());
       updateQueryTopButtonsLabels();
     });
+    els.topResultsCountInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleOpenTopResults();
+      }
+    });
+  }
+
+  if (els.tabOpenerQueryInput) {
+    els.tabOpenerQueryInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleOpenTopResults();
+      }
+    });
   }
 
   if (els.btnOpenTopResults) {
@@ -1528,29 +1638,58 @@
 
   // Clip selection
   els.btnClipSelection.addEventListener('click', async () => {
-    const res = await browser.runtime.sendMessage({
-      type: 'CLIP_ACTIVE_SELECTION',
-      projectId: activeProject ? activeProject.id : null
-    });
-    if (res && res.ok) {
-      await refreshUI(true);
-      showStatus('Selected text saved to dossier.');
-    } else {
-      showStatus((res && res.error) || 'Please select text on the webpage first.', true);
+    try {
+      const res = await browser.runtime.sendMessage({
+        type: 'CLIP_ACTIVE_SELECTION',
+        projectId: activeProject ? activeProject.id : null
+      });
+      if (res && res.ok) {
+        await refreshUI(true);
+        showStatus('Selected text saved to dossier.');
+      } else {
+        showStatus((res && res.error) || 'Please select text on the webpage first.', true);
+      }
+    } catch (err) {
+      showStatus((err && err.message) || 'Unable to clip selection from this page.', true);
     }
   });
 
   // Clear highlights
   els.btnClearHighlights.addEventListener('click', async () => {
-    await browser.runtime.sendMessage({ type: 'CLEAR_ACTIVE_HIGHLIGHTS' });
-    showStatus('Highlights cleared from webpage.');
+    try {
+      await browser.runtime.sendMessage({ type: 'CLEAR_ACTIVE_HIGHLIGHTS' });
+      showStatus('Highlights cleared from webpage.');
+    } catch (err) {
+      showStatus((err && err.message) || 'Unable to clear highlights on this page.', true);
+    }
   });
 
   // Visual / Graphics hybrid toggles & explicit AI OCR scan
   if (els.toggleIncludeVisuals) {
     els.toggleIncludeVisuals.addEventListener('change', async () => {
-      await window.StorageManager.updateSettings({ includeLocalVisuals: els.toggleIncludeVisuals.checked });
-      showStatus(els.toggleIncludeVisuals.checked ? 'Local captions & SVG text enabled.' : 'Local visual text disabled.');
+      const includeVisuals = els.toggleIncludeVisuals.checked;
+      if (currentState) {
+        if (!currentState.settings) currentState.settings = {};
+        currentState.settings.includeLocalVisuals = includeVisuals;
+      }
+      await window.StorageManager.updateSettings({ includeLocalVisuals: includeVisuals });
+      if (activeProject && activeProject.aiStrategy) {
+        const targets = new Set(
+          Array.isArray(activeProject.aiStrategy.targetElements) && activeProject.aiStrategy.targetElements.length > 0
+            ? activeProject.aiStrategy.targetElements
+            : ['paragraphs', 'quotes_comments', 'lists', 'tables', 'visuals']
+        );
+        if (includeVisuals) {
+          targets.add('visuals');
+        } else if (targets.size > 1) {
+          targets.delete('visuals');
+        }
+        activeProject.aiStrategy.targetElements = Array.from(targets);
+        lastStrategySig = '';
+        renderTargetElementsBar(activeProject.aiStrategy);
+        await window.StorageManager.updateProject(activeProject.id, { aiStrategy: activeProject.aiStrategy });
+      }
+      showStatus(includeVisuals ? 'Local captions & SVG text enabled.' : 'Local visual text disabled.');
     });
   }
 
@@ -1607,6 +1746,9 @@
 
   // Project Management (Switch, Rename, Create, Delete)
   els.projectSelect.addEventListener('change', async () => {
+    cancelInlineRename();
+    lastStrategySig = '';
+    lastSavedItemsSig = '';
     await window.StorageManager.setActiveProject(els.projectSelect.value);
     browser.runtime.sendMessage({ type: 'REFRESH_BADGE' }).catch(() => {});
     await refreshUI(false);
@@ -1727,6 +1869,9 @@
   // Delete current dossier
   els.btnDeleteProject.addEventListener('click', async () => {
     if (!activeProject) return;
+    cancelInlineRename();
+    lastStrategySig = '';
+    lastSavedItemsSig = '';
     await window.StorageManager.deleteProject(activeProject.id);
     browser.runtime.sendMessage({ type: 'REFRESH_BADGE' }).catch(() => {});
     await refreshUI(false);
@@ -1826,6 +1971,9 @@
       }
       if (msg.type === 'STATE_UPDATED') {
         if (msg.reason === 'continuous_matches_added') {
+          if (typeof msg.totalSoFar === 'number') {
+            updateLiveMatchesCount(msg.totalSoFar);
+          }
           showStatus('New extracts captured live from page.');
         } else if (msg.reason === 'visual_ocr_saved') {
           showStatus('Visual OCR extracts added to dossier.');
@@ -1836,8 +1984,25 @@
     });
   }
 
-  if (typeof browser !== 'undefined' && browser.tabs && browser.tabs.onActivated) {
-    browser.tabs.onActivated.addListener(() => checkActiveTabStatus());
+  if (typeof browser !== 'undefined' && browser.tabs) {
+    if (browser.tabs.onActivated) {
+      browser.tabs.onActivated.addListener(() => checkActiveTabStatus());
+    }
+    if (browser.tabs.onUpdated) {
+      browser.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
+        if (tab && tab.active && changeInfo && changeInfo.status === 'complete') {
+          checkActiveTabStatus();
+        }
+      });
+    }
+  }
+
+  if (typeof browser !== 'undefined' && browser.windows && browser.windows.onFocusChanged) {
+    browser.windows.onFocusChanged.addListener((windowId) => {
+      if (windowId !== browser.windows.WINDOW_ID_NONE) {
+        checkActiveTabStatus();
+      }
+    });
   }
 
   // Init

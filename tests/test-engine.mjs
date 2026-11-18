@@ -275,6 +275,136 @@ async function runTests() {
   assert.ok(ehrEval.matched, 'Le regole auto-generate dalla domanda devono catturare blocchi pertinenti su EHR tools');
   console.log('   ✓ Auto-popolazione Extraction & Scanner da domanda Interpreter OK');
 
+  console.log('6. Verifica regressioni e ottimizzazioni (ExpressionEngine, GeminiClient, StorageManager, Exporter)...');
+
+  // 6a. ExpressionEngine: pipe-OR tra parentesi, AND+OR misti, stop-word booleane minuscole, Unicode NFD
+  const pipeOrRes = ExpressionEngine.evaluateBlock(
+    'La piattaforma adotta lo standard FHIR negli ospedali.',
+    'Interoperabilità',
+    '(HL7 | FHIR) AND ospedali'
+  );
+  assert.equal(pipeOrRes.matched, true, 'Deve supportare (A | B) con pipe OR tra parentesi');
+
+  const mixedAndOrMatch = ExpressionEngine.evaluateBlock(
+    'Clinicians shared mixed feedback on the new EHR.',
+    'Report',
+    'EHR AND usability OR feedback'
+  );
+  assert.equal(mixedAndOrMatch.matched, true, 'EHR AND usability OR feedback deve fare match con EHR + feedback');
+
+  const mixedAndOrMiss = ExpressionEngine.evaluateBlock(
+    'The usability of this calendar app is great.',
+    'Report',
+    'EHR AND usability OR feedback'
+  );
+  assert.equal(mixedAndOrMiss.matched, false, 'EHR AND usability OR feedback non deve fare match senza EHR');
+
+  const lowercaseBoolStop = ExpressionEngine.evaluateBlock(
+    'Solar power capacity grew rapidly in 2025.',
+    'Energy',
+    'solar and power'
+  );
+  assert.equal(lowercaseBoolStop.matched, true, 'and/or/not minuscoli non devono diventare concetti obbligatori');
+  assert.ok(!lowercaseBoolStop.matchedTerms.includes('and'));
+
+  const nfdText = 'Il caffe\u0300 e\u0300 ottimo per la ricerca.';
+  const nfdRes = ExpressionEngine.evaluateBlock(nfdText, 'Test', 'caffe');
+  assert.equal(nfdRes.matched, true, 'collectOriginalMatches deve gestire testo NFD senza errori di lunghezza');
+  assert.ok(nfdRes.matchedTerms.length >= 1, 'Deve restituire almeno un termine trovato su testo NFD');
+
+  // 6b. GeminiClient: Anthropic visual routing + cache key middle slice + fenced/truncated JSON
+  const origFetchReg = globalThis.fetch;
+  try {
+    const requestedUrls = [];
+    let anthropicCallCount = 0;
+    globalThis.fetch = async (url, init) => {
+      requestedUrls.push(String(url));
+      if (String(url).includes('api.anthropic.com/v1/messages')) {
+        anthropicCallCount++;
+        const body = JSON.parse(init.body);
+        const userMsg = body.messages[0].content;
+        const hasImage = Array.isArray(userMsg) && userMsg.some(c => c.type === 'image');
+        if (hasImage) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              content: [{
+                text: JSON.stringify({
+                  relevant: true,
+                  relevanceScore: 80 + anthropicCallCount,
+                  summary: `Visual #${anthropicCallCount}`,
+                  extractedText: 'Chart data',
+                  keyEntities: ['Solar']
+                })
+              }]
+            })
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            content: [{
+              text: 'Here is the plan:\n```json\n{"objective":"Solar trends","keyConcepts":["solar","grid"],"primaryExpressions":["solar grid"],"regexPatterns":[],"exclusions":["login"],"targetElements":["paragraphs"],"recommendedMinScore":12,"webQueries":["solar grid"]}\n```\nHope this helps!'
+            }]
+          })
+        };
+      }
+      throw new Error(`Unexpected URL in regression test: ${url}`);
+    };
+
+    const anthropicCreds = {
+      aiProvider: 'anthropic',
+      apiKey: 'sk-ant-test-key',
+      model: 'claude-sonnet-4-20250514'
+    };
+
+    const imgA = 'A'.repeat(200) + 'MIDDLE_ONE' + 'Z'.repeat(200);
+    const imgB = 'A'.repeat(200) + 'MIDDLE_TWO' + 'Z'.repeat(200);
+    const visA = await GeminiClient.analyzeVisualMedia({ base64Data: imgA, mimeType: 'image/png', alt: 'chart1' }, anthropicCreds);
+    const visB = await GeminiClient.analyzeVisualMedia({ base64Data: imgB, mimeType: 'image/png', alt: 'chart2' }, anthropicCreds);
+    assert.equal(visA.ok, true, 'Anthropic analyzeVisualMedia deve funzionare');
+    assert.equal(visB.ok, true, 'Anthropic analyzeVisualMedia deve distinguere immagini con stessa lunghezza e stesso header/trailer');
+    assert.equal(anthropicCallCount, 2, 'La cache visiva non deve collidere quando cambia solo la parte centrale');
+    assert.ok(requestedUrls.every(u => u.includes('api.anthropic.com')), 'Il provider anthropic non deve chiamare OpenAI');
+
+    const fencedInterp = await GeminiClient.interpretResearchPrompt('solar grid trends prose', anthropicCreds);
+    assert.equal(fencedInterp.ok, true, 'parseGeminiJson deve estrarre JSON fenced circondato da prosa');
+    assert.equal(fencedInterp.strategy.objective, 'Solar trends');
+  } finally {
+    globalThis.fetch = origFetchReg;
+  }
+
+  // 6c. StorageManager: updateItem recomputes fingerprint + batch addExtractedItems order
+  const latestState = await StorageManager.loadState();
+  const activeProj = latestState.projects.find(p => p.id === proj.id);
+  const firstItem = activeProj.items[0];
+  const oldFingerprint = firstItem.fingerprint;
+  const updatedItem = await StorageManager.updateItem(proj.id, firstItem.id, {
+    text: 'Testo completamente aggiornato per verificare il nuovo fingerprint.'
+  });
+  assert.notEqual(updatedItem.fingerprint, oldFingerprint, 'updateItem deve ricalcolare il fingerprint quando cambia patch.text');
+
+  // 6d. Exporter: null project, undefined item.text/extractedAt, lone \r in CSV
+  const nullMd = Exporter.generateMarkdown(null);
+  assert.ok(typeof nullMd === 'string' && nullMd.length > 0, 'generateMarkdown(null) non deve crashare');
+  assert.doesNotThrow(() => Exporter.generateJSON(null), 'generateJSON(null) non deve crashare');
+  assert.doesNotThrow(() => Exporter.generateCSV(null), 'generateCSV(null) non deve crashare');
+
+  const edgeProj = {
+    name: 'Edge Export',
+    items: [
+      { id: '1', text: undefined, matchedTerms: [null, 'test'], score: 10, source: { domain: 'example.com' } },
+      { id: '2', text: 'Line1\rLine2', matchedTerms: ['Line1'], score: 20, extractedAt: '2026-01-01T00:00:00Z', source: { domain: 'example.com' } }
+    ]
+  };
+  const edgeMd = Exporter.generateMarkdown(edgeProj, { groupBy: 'chronological' });
+  assert.ok(edgeMd.includes('Edge Export'), 'generateMarkdown deve gestire item.text undefined ed extractedAt mancante');
+  const edgeCsv = Exporter.generateCSV(edgeProj);
+  assert.ok(!edgeCsv.includes('Line1\rLine2') && edgeCsv.includes('Line1 Line2'), 'generateCSV deve normalizzare \\r isolati');
+
+  console.log('   ✓ Regressioni ExpressionEngine, GeminiClient, StorageManager, Exporter OK');
   console.log('\nTUTTI I TEST COMPLETATI CON SUCCESSO!');
 }
 

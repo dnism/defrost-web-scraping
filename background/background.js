@@ -37,32 +37,49 @@
     } catch (_) {}
   }
 
+  const pendingContentInjections = new Map();
+
   /**
    * Assicura che i content script siano caricati nella scheda target
    * (utile per schede aperte prima dell'installazione dell'add-on)
    */
   async function ensureContentScript(tabId) {
-    try {
-      const pong = await browser.tabs.sendMessage(tabId, { type: 'PING' });
-      if (pong && pong.ok) return true;
-    } catch (_) {
+    if (pendingContentInjections.has(tabId)) {
+      return pendingContentInjections.get(tabId);
+    }
+
+    const promise = (async () => {
       try {
-        if (browser.scripting && browser.scripting.executeScript) {
-          await browser.scripting.insertCSS({
-            target: { tabId },
-            files: ['content/extractor.css']
-          }).catch(() => {});
-          await browser.scripting.executeScript({
-            target: { tabId },
-            files: ['shared/expression-engine.js', 'content/extractor.js']
-          });
-          return true;
+        const pong = await browser.tabs.sendMessage(tabId, { type: 'PING' });
+        if (pong && pong.ok) return true;
+      } catch (_) {
+        try {
+          if (browser.scripting && browser.scripting.executeScript) {
+            await browser.scripting.insertCSS({
+              target: { tabId },
+              files: ['content/extractor.css']
+            }).catch(() => {});
+            await browser.scripting.executeScript({
+              target: { tabId },
+              files: ['shared/expression-engine.js', 'content/extractor.js']
+            });
+            return true;
+          }
+        } catch (err) {
+          return false;
         }
-      } catch (err) {
-        return false;
+      }
+      return false;
+    })();
+
+    pendingContentInjections.set(tabId, promise);
+    try {
+      return await promise;
+    } finally {
+      if (pendingContentInjections.get(tabId) === promise) {
+        pendingContentInjections.delete(tabId);
       }
     }
-    return false;
   }
 
   /**
@@ -205,13 +222,6 @@
    * Waits for a browser tab to reach 'complete' status, with a timeout guard.
    */
   async function waitForTabComplete(tabId, timeoutMs = 12000) {
-    try {
-      const current = await browser.tabs.get(tabId);
-      if (current && current.status === 'complete') return true;
-    } catch (_) {
-      return false;
-    }
-
     return new Promise((resolve) => {
       let done = false;
       const finish = (ok) => {
@@ -220,6 +230,9 @@
         clearTimeout(timer);
         if (browser.tabs && browser.tabs.onUpdated) {
           browser.tabs.onUpdated.removeListener(onUpdated);
+        }
+        if (browser.tabs && browser.tabs.onRemoved) {
+          browser.tabs.onRemoved.removeListener(onRemoved);
         }
         resolve(ok);
       };
@@ -230,8 +243,25 @@
         }
       };
 
+      const onRemoved = (removedId) => {
+        if (removedId === tabId) {
+          finish(false);
+        }
+      };
+
       const timer = setTimeout(() => finish(false), timeoutMs);
-      browser.tabs.onUpdated.addListener(onUpdated);
+      if (browser.tabs && browser.tabs.onUpdated) {
+        browser.tabs.onUpdated.addListener(onUpdated);
+      }
+      if (browser.tabs && browser.tabs.onRemoved) {
+        browser.tabs.onRemoved.addListener(onRemoved);
+      }
+
+      browser.tabs.get(tabId).then((current) => {
+        if (current && current.status === 'complete') {
+          finish(true);
+        }
+      }).catch(() => finish(false));
     });
   }
 
@@ -248,13 +278,26 @@
           try {
             const u = new URL(rawHref, location.href);
             if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+            const validateHttp = (candidate) => {
+              const parsed = new URL(candidate, location.href);
+              return (parsed.protocol === 'http:' || parsed.protocol === 'https:') ? parsed.href : null;
+            };
             if (u.hostname.includes('google.') && u.pathname === '/url') {
               const q = u.searchParams.get('q') || u.searchParams.get('url');
-              if (q) return new URL(q).href;
+              if (q) return validateHttp(q);
             }
             if (u.hostname.includes('duckduckgo.com') && u.pathname.startsWith('/l/')) {
               const uddg = u.searchParams.get('uddg');
-              if (uddg) return new URL(uddg).href;
+              if (uddg) return validateHttp(uddg);
+            }
+            if (u.hostname.includes('bing.com') && u.pathname.startsWith('/ck/a')) {
+              const enc = u.searchParams.get('u');
+              if (enc && enc.startsWith('a1') && enc.length > 2) {
+                const b64 = enc.slice(2).replace(/-/g, '+').replace(/_/g, '/');
+                const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+                const decoded = atob(padded);
+                return validateHttp(decoded);
+              }
             }
             return u.href;
           } catch (_) {
@@ -294,7 +337,11 @@
         if (host.includes('scholar.google.')) {
           selectors = ['#gs_res_ccl_mid .gs_rt a'];
         } else if (host.includes('google.')) {
-          selectors = ['#search a:has(h3), #rso a:has(h3)'];
+          selectors = [
+            '#search a:has(h3), #rso a:has(h3)',
+            '#search h3 a, #rso h3 a, #search .yuRUbf a, #rso .yuRUbf a',
+            '#search a[href^="http"], #rso a[href^="http"]'
+          ];
         } else if (host.includes('duckduckgo.com')) {
           selectors = [
             'ol.react-results--main article[data-testid="result"] a[data-testid="result-title-a"]',
@@ -304,13 +351,22 @@
         } else if (host.includes('bing.com')) {
           selectors = ['#b_results li.b_algo h2 a'];
         } else {
-          selectors = ['main a[href^="http"]:has(h2, h3), main a[href^="http"]'];
+          selectors = [
+            'main a[href^="http"]:has(h2, h3)',
+            'main h2 a[href^="http"], main h3 a[href^="http"]',
+            'main a[href^="http"]'
+          ];
         }
 
         const seen = new Set();
         const results = [];
         for (const sel of selectors) {
-          const nodes = Array.from(document.querySelectorAll(sel));
+          let nodes = [];
+          try {
+            nodes = Array.from(document.querySelectorAll(sel));
+          } catch (_) {
+            continue;
+          }
           for (const a of nodes) {
             if (!a || !a.getAttribute('href')) continue;
             if (a.closest('header, nav, footer, aside, [role="banner"], [role="navigation"], [role="contentinfo"], [data-text-ad], .ads-ad, #tads, #bottomads, .b_ad, .result--ad')) continue;
@@ -525,9 +581,9 @@
             const clicked = await clickDuckDuckGoMoreResults(ddgTabId);
             if (!clicked) break;
             await new Promise(r => setTimeout(r, 950));
-            const batch = await extractSearchResultUrlsFromTab(ddgTabId, perPageExtractLimit);
-            addBatch(batch);
-            if (!batch || batch.length === 0) break;
+            const batch = await extractSearchResultUrlsFromTab(ddgTabId, 50);
+            const added = addBatch(batch);
+            if (!batch || batch.length === 0 || (added === 0 && activeFilters.length === 0)) break;
           }
         } else {
           for (let pageIdx = 1; pageIdx <= 5 && collected.length < maxCount; pageIdx++) {
@@ -549,6 +605,8 @@
           }
         }
       }
+    } catch (err) {
+      return { ok: false, error: (err && err.message) || 'Failed to extract search results from tab.' };
     } finally {
       if (createdSearchTabId) {
         await browser.tabs.remove(createdSearchTabId).catch(() => {});
@@ -636,6 +694,11 @@
         return { ok: false, error: `Unsupported media format (${headerType || 'unknown'}).` };
       }
 
+      const contentLength = Number(res.headers.get('content-length') || 0);
+      if (contentLength > maxBytes) {
+        return { ok: false, error: `Media exceeds ${(maxBytes / (1024 * 1024)).toFixed(0)} MB limit.` };
+      }
+
       const buf = await res.arrayBuffer();
       if (buf.byteLength === 0) {
         return { ok: false, error: 'Empty media file.' };
@@ -708,6 +771,7 @@
     const CONCURRENCY = 2;
     const now = new Date().toISOString();
     const stamp = Date.now().toString(36);
+    let visSeq = 0;
     const sourceMeta = metadata || buildFallbackTabMetadata(tab);
 
     for (let i = 0; i < candidates.length; i += CONCURRENCY) {
@@ -774,7 +838,7 @@
           : (cand.kind === 'svg' ? 'svg-ocr' : (cand.kind === 'canvas' ? 'canvas-ocr' : 'image-ocr'));
 
         const extractItem = {
-          localId: `vis_${stamp}_${i + bIdx}`,
+          localId: `vis_${stamp}_${++visSeq}`,
           text: combinedText,
           heading,
           blockType,
@@ -816,7 +880,7 @@
 
     let saveStats = null;
     if (matchedItems.length > 0 && options.autoSave !== false) {
-      saveStats = await root.StorageManager.addExtractedItems(matchedItems, activeProj.id);
+      saveStats = await root.StorageManager.addExtractedItems(matchedItems, (activeProj && activeProj.id) || options.projectId);
       await updateBadge();
       notifyViews({
         type: 'STATE_UPDATED',
@@ -888,26 +952,31 @@
     return { ok: true, scannedCount: 0, matchedCount: 0, matches: [] };
   }
 
-  // Configure Context Menus
+  // Configure Context Menus (serialized to prevent removeAll/create races)
+  let menuSetupPromise = Promise.resolve();
   function setupContextMenus() {
-    if (!browser.contextMenus) return;
-    browser.contextMenus.removeAll().then(() => {
-      browser.contextMenus.create({
-        id: 'defrost-save-selection',
-        title: 'Save selection to active Defrost dossier',
-        contexts: ['selection']
-      });
-      browser.contextMenus.create({
-        id: 'defrost-ocr-image',
-        title: 'Extract text & chart data with Defrost AI (OCR)',
-        contexts: ['image']
-      });
-      browser.contextMenus.create({
-        id: 'defrost-scan-page',
-        title: 'Scan page with Defrost expressions',
-        contexts: ['page']
-      });
-    }).catch(() => {});
+    if (!browser.contextMenus) return menuSetupPromise;
+    menuSetupPromise = menuSetupPromise.then(async () => {
+      try {
+        await browser.contextMenus.removeAll();
+        browser.contextMenus.create({
+          id: 'defrost-save-selection',
+          title: 'Save selection to active Defrost dossier',
+          contexts: ['selection']
+        });
+        browser.contextMenus.create({
+          id: 'defrost-ocr-image',
+          title: 'Extract text & chart data with Defrost AI (OCR)',
+          contexts: ['image']
+        });
+        browser.contextMenus.create({
+          id: 'defrost-scan-page',
+          title: 'Scan page with Defrost expressions',
+          contexts: ['page']
+        });
+      } catch (_) {}
+    });
+    return menuSetupPromise;
   }
 
   if (typeof browser !== 'undefined' && browser.contextMenus && browser.contextMenus.onClicked) {
@@ -1005,7 +1074,7 @@
           const isCurrentlyActive = statusRes && statusRes.active;
 
           if (isCurrentlyActive) {
-            const stopRes = await browser.tabs.sendMessage(activeTab.id, { type: 'STOP_CONTINUOUS_SCAN' });
+            await browser.tabs.sendMessage(activeTab.id, { type: 'STOP_CONTINUOUS_SCAN' }).catch(() => {});
             return { ok: true, active: false };
           } else {
             const state = await root.StorageManager.loadState();
@@ -1142,7 +1211,10 @@
         return browser.tabs.query({ active: true, currentWindow: true }).then(async (tabs) => {
           const activeTab = tabs && tabs[0];
           if (!activeTab || !activeTab.id) return { ok: false, error: 'Nessuna scheda attiva.' };
-          await ensureContentScript(activeTab.id);
+          const ready = await ensureContentScript(activeTab.id);
+          if (!ready) {
+            return { ok: false, error: 'Unable to access this page (browser-protected or unsupported tab).' };
+          }
           const res = await browser.tabs.sendMessage(activeTab.id, {
             type: 'GET_SELECTION_EXTRACT',
             note: msg.note || ''

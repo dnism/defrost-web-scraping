@@ -46,7 +46,7 @@ body {
 
 .defrost-popup {
   background: var(--surface);
-  border-radius: 14px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   padding: 14px;
   display: flex;
@@ -95,7 +95,7 @@ body {
   width: 100%;
   background-color: var(--dropdown);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 5px 8px;
   font-family: inherit;
   font-size: 12px;
@@ -130,7 +130,7 @@ body {
   width: 100%;
   background: var(--inset);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 8px 10px;
   font-family: inherit;
   font-size: 12px;
@@ -165,7 +165,7 @@ body {
   all: unset;
   font-family: var(--font-sans);
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 7px 12px;
   font-size: 11.5px;
   font-weight: 700;
@@ -193,6 +193,16 @@ body {
   background: var(--accent-hover);
 }
 
+.btn-neo-primary.btn-scan-running {
+  background: #059669;
+  border-color: #059669;
+}
+
+.btn-neo-primary.btn-scan-running:hover {
+  background: #047857;
+  border-color: #047857;
+}
+
 .btn-neo-ai {
   background: var(--ai);
   color: var(--text);
@@ -209,19 +219,25 @@ body {
   background: var(--card);
   padding: 4px 10px;
   font-size: 11px;
-  border-radius: 999px;
+  border-radius: 8px;
   color: var(--accent);
 }
 
 .popup-status {
-  background: rgba(88, 123, 127, 0.14);
-  color: var(--text);
-  border: 1px solid var(--accent);
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
   padding: 6px 10px;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 11px;
   font-weight: 600;
   text-align: center;
+}
+
+.popup-status.is-error {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fecaca;
 }
 
 .bottom-export-strip {
@@ -249,7 +265,7 @@ body {
   background: var(--card);
   border: 1px solid var(--border);
   padding: 3px 8px;
-  border-radius: 4px;
+  border-radius: 8px;
   font-size: 10.5px;
   font-weight: 800;
   color: var(--text);

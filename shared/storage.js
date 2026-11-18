@@ -49,8 +49,20 @@
     }
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
       return {
-        get: (keys) => new Promise(resolve => chrome.storage.local.get(keys, resolve)),
-        set: (obj) => new Promise(resolve => chrome.storage.local.set(obj, resolve))
+        get: (keys) => new Promise((resolve, reject) => chrome.storage.local.get(keys, (res) => {
+          if (chrome.runtime && chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve(res);
+          }
+        })),
+        set: (obj) => new Promise((resolve, reject) => chrome.storage.local.set(obj, () => {
+          if (chrome.runtime && chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve();
+          }
+        }))
       };
     }
     return {
@@ -160,8 +172,12 @@
     return Boolean(state && Array.isArray(state.projects) && state.projects.length > 0);
   }
 
-  if (typeof browser !== 'undefined' && browser.storage && browser.storage.onChanged) {
-    browser.storage.onChanged.addListener((changes, area) => {
+  const storageEvents = (typeof browser !== 'undefined' && browser.storage && browser.storage.onChanged)
+    ? browser.storage.onChanged
+    : (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged ? chrome.storage.onChanged : null);
+
+  if (storageEvents) {
+    storageEvents.addListener((changes, area) => {
       if (area !== 'local') return;
       if (changes[CREDENTIALS_KEY] && changes[CREDENTIALS_KEY].newValue) {
         const cred = changes[CREDENTIALS_KEY].newValue;
@@ -203,6 +219,7 @@
     }
     if (!state.projects.some(p => p.id === state.activeProjectId)) {
       state.activeProjectId = state.projects[0].id;
+      dirty = true;
     }
 
     // Resolve API key from dedicated credentials store, state, or localStorage mirror
@@ -460,6 +477,7 @@
       existingByFp.set(item.fingerprint, item);
     }
 
+    const newItems = [];
     for (const raw of rawItems) {
       if (!raw || !raw.text || !raw.text.trim()) continue;
       const sourceUrl = (raw.source && (raw.source.canonicalUrl || raw.source.url)) || raw.url || '';
@@ -509,10 +527,14 @@
             schemaType: (raw.source && raw.source.schemaType) || ''
           }
         };
-        proj.items.unshift(newItem);
+        newItems.push(newItem);
         existingByFp.set(fp, newItem);
         addedCount++;
       }
+    }
+
+    if (newItems.length > 0) {
+      proj.items = newItems.reverse().concat(proj.items);
     }
 
     if (addedCount > 0 || updatedCount > 0) {
@@ -541,6 +563,8 @@
     }
     if (typeof patch.text === 'string' && patch.text.trim()) {
       item.text = patch.text.trim();
+      const sourceUrl = (item.source && (item.source.canonicalUrl || item.source.url)) || '';
+      item.fingerprint = computeItemFingerprint(sourceUrl, item.text);
     }
     item.updatedAt = new Date().toISOString();
     proj.updatedAt = item.updatedAt;

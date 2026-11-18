@@ -54,7 +54,7 @@
 
     if (groupBy === 'score' || groupBy === 'chronological') {
       const list = groupBy === 'chronological'
-        ? [...items].sort((a, b) => String(b.extractedAt).localeCompare(String(a.extractedAt)))
+        ? [...items].sort((a, b) => String(b.extractedAt || '').localeCompare(String(a.extractedAt || '')))
         : sorted;
       groups.set(groupBy === 'chronological' ? 'Ordine Cronologico' : 'Tutti gli estratti per Rilevanza', list);
       return groups;
@@ -87,18 +87,19 @@
    * Evidenzia in grassetto Markdown i termini trovati all'interno del testo estratto
    */
   function highlightTermsMarkdown(text, terms) {
-    if (!text || !Array.isArray(terms) || terms.length === 0) return text;
-    const valid = Array.from(new Set(terms.map(t => t.trim()).filter(t => t.length >= 3)))
+    const safeText = String(text || '');
+    if (!safeText || !Array.isArray(terms) || terms.length === 0) return safeText;
+    const valid = Array.from(new Set(terms.map(t => String(t || '').trim()).filter(t => t.length >= 3)))
       .sort((a, b) => b.length - a.length)
       .slice(0, 12);
-    if (valid.length === 0) return text;
+    if (valid.length === 0) return safeText;
 
     const escaped = valid.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     try {
       const re = new RegExp(`(${escaped.join('|')})`, 'gi');
-      return text.replace(re, '**$1**');
+      return safeText.replace(re, '**$1**');
     } catch (_) {
-      return text;
+      return safeText;
     }
   }
 
@@ -107,6 +108,7 @@
    * sommario, bibliografia delle fonti e sezioni organizzate.
    */
   function generateMarkdown(project, options = {}) {
+    project = project || {};
     const groupBy = options.groupBy || 'expression';
     const items = Array.isArray(project.items) ? project.items : [];
     const sources = buildSourcesCatalog(items);
@@ -185,7 +187,7 @@
           lines.push(`#### ${groupIndex}.${idx + 1} ${headingLabel}[${src.title || src.domain || 'Source'}](${src.canonicalUrl || src.url || '#'})`);
           lines.push('');
 
-          const highlightedText = highlightTermsMarkdown(item.text, item.matchedTerms);
+          const highlightedText = highlightTermsMarkdown(item.text || '', item.matchedTerms);
           const quotedLines = highlightedText.split('\n').map(l => `> ${l}`).join('\n');
           lines.push(quotedLines);
           lines.push('');
@@ -246,6 +248,7 @@
    * Genera il file JSON strutturato e auto-descrittivo (.json)
    */
   function generateJSON(project, options = {}) {
+    project = project || {};
     const groupBy = options.groupBy || 'expression';
     const items = Array.isArray(project.items) ? project.items : [];
     const sources = buildSourcesCatalog(items);
@@ -293,6 +296,7 @@
    * Genera il file CSV (.csv) con BOM UTF-8 per compatibilità immediata con Excel / LibreOffice / Google Sheets
    */
   function generateCSV(project) {
+    project = project || {};
     const items = Array.isArray(project.items) ? project.items : [];
     const headers = [
       'Extract_ID',
@@ -316,7 +320,7 @@
 
     const escapeCsvCell = (val) => {
       const str = String(val === null || val === undefined ? '' : val)
-        .replace(/\r?\n/g, ' ')
+        .replace(/[\r\n]+/g, ' ')
         .trim();
       if (/[",;\n]/.test(str)) {
         return `"${str.replace(/"/g, '""')}"`;
@@ -356,6 +360,7 @@
    * Avvia il download del file nel browser (Firefox WebExtension)
    */
   async function downloadProjectFile(project, format = 'md', options = {}) {
+    project = project || {};
     let content = '';
     let mimeType = 'text/plain;charset=utf-8';
     let ext = 'txt';

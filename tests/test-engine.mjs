@@ -312,6 +312,51 @@ async function runTests() {
   assert.equal(nfdRes.matched, true, 'collectOriginalMatches deve gestire testo NFD senza errori di lunghezza');
   assert.ok(nfdRes.matchedTerms.length >= 1, 'Deve restituire almeno un termine trovato su testo NFD');
 
+  // 6a-bis. Keyword multi-parola unite (es. "mary lucier"), virgole ed esclusioni globali su riga separata (-1975)
+  const unsplitTags = ExpressionEngine.extractTermsFromExpressions(
+    'mary lucier\ndawn burn paris, technique\n-1975\n1977'
+  );
+  assert.deepEqual(
+    unsplitTags.keywords,
+    ['mary lucier', 'dawn burn paris', 'technique', '1977'],
+    'Righe semplici multi-parola e separate da virgola devono restare intere nei Synced tags'
+  );
+  assert.deepEqual(unsplitTags.exclusions, ['1975']);
+
+  const separatedWordsRes = ExpressionEngine.evaluateBlock(
+    'Mary went to Paris and later Lucier exhibited a video.',
+    'Bio',
+    'mary lucier'
+  );
+  assert.equal(separatedWordsRes.matched, false, '"mary lucier" su una riga non deve fare match con "Mary" e "Lucier" separati');
+
+  const adjacentPhraseRes = ExpressionEngine.evaluateBlock(
+    'Video art installation by Mary Lucier shown in 1977.',
+    'Exhibition',
+    'mary lucier\n-1975'
+  );
+  assert.equal(adjacentPhraseRes.matched, true, '"mary lucier" deve fare match quando adiacente senza 1975');
+
+  const globalExclRes = ExpressionEngine.evaluateBlock(
+    'Early installation by Mary Lucier presented in 1975.',
+    'Archive',
+    'mary lucier\n-1975'
+  );
+  assert.equal(globalExclRes.matched, false, 'Esclusione su riga separata (-1975) deve escludere il blocco globalmente');
+
+  const regexTags = ExpressionEngine.extractTermsFromExpressions(
+    'solar power\n/\\b202[0-6]\\b/\n/\\b\\d+%\\b/i solar -ads'
+  );
+  assert.deepEqual(regexTags.regexes, ['/\\b202[0-6]\\b/', '/\\b\\d+%\\b/i']);
+  assert.deepEqual(regexTags.keywords, ['solar power', 'solar']);
+  assert.deepEqual(regexTags.exclusions, ['ads']);
+  assert.equal(ExpressionEngine.describeRegex('/\\b202[0-6]\\b/'), 'Years 2020–2026');
+  assert.equal(ExpressionEngine.describeRegex('/\\b\\d+%\\b/i'), 'Percentages (%)');
+  assert.equal(
+    ExpressionEngine.describeRegex('/\\btelemedic(ina|ine|al)\\b/i'),
+    'telemedicina / telemedicine / telemedical'
+  );
+
   // 6b. GeminiClient: Anthropic visual routing + cache key middle slice + fenced/truncated JSON
   const origFetchReg = globalThis.fetch;
   try {
@@ -403,6 +448,104 @@ async function runTests() {
   assert.ok(edgeMd.includes('Edge Export'), 'generateMarkdown deve gestire item.text undefined ed extractedAt mancante');
   const edgeCsv = Exporter.generateCSV(edgeProj);
   assert.ok(!edgeCsv.includes('Line1\rLine2') && edgeCsv.includes('Line1 Line2'), 'generateCSV deve normalizzare \\r isolati');
+
+  // 6e. Nuove regressioni (v0.3.1): splitExpressions unclosed '/', wildcard -term*, non-word phrase bounds, NOT/guillemets, describeRegex, Gemini non-retryable/thinking/repair, Storage null guards, Exporter YAML/date/title
+  const unclosedSlashSplit = ExpressionEngine.splitExpressions('AI / ML\nsolar power');
+  assert.deepEqual(unclosedSlashSplit, ['AI / ML', 'solar power'], 'Un / isolato su una riga non deve inglobare le righe successive');
+
+  const wildcardExclHit = ExpressionEngine.evaluateBlock('Solar grid deployment grew.', 'Energy', 'solar -test*');
+  const wildcardExclDrop = ExpressionEngine.evaluateBlock('Solar grid testing failed.', 'Energy', 'solar -test*');
+  assert.equal(wildcardExclHit.matched, true, 'Wildcard exclusion -test* non deve escludere blocchi senza match');
+  assert.equal(wildcardExclDrop.matched, false, 'Wildcard exclusion -test* deve escludere "testing"');
+
+  const currencyPhraseMatch = ExpressionEngine.evaluateBlock('Funding reached $100 billion in 2025.', 'Finance', '$100 billion');
+  assert.equal(currencyPhraseMatch.matched, true, 'Frasi con caratteri non-word iniziali ($100 billion) devono fare match');
+
+  const notTerms = ExpressionEngine.extractTermsFromExpressions('solar NOT "paid ads" NOT spam -«click bait»');
+  assert.deepEqual(notTerms.exclusions, ['paid ads', 'spam', 'click bait'], 'extractTermsFromExpressions deve estrarre NOT "phrase", NOT word e -«...»');
+  assert.deepEqual(notTerms.keywords, ['solar']);
+
+  assert.notEqual(ExpressionEngine.describeRegex('/^\\d+$/'), 'Currency amounts', '/^\\d+$/ non deve essere classificato come Currency amounts');
+  assert.equal(ExpressionEngine.describeRegex('/\\b\\d+\\b/'), 'Numbers');
+  assert.equal(ExpressionEngine.describeRegex('/\\b\\d+(?:[.,]\\d+)?\\s*(MW|GW|kWh)\\b/'), 'Numbers (MW / GW / kWh)');
+  assert.equal(ExpressionEngine.describeRegex('/(?:ISO\\s*\\d+|HL7\\s*FHIR)/'), 'ISO # / HL7 FHIR');
+
+  // GeminiClient: non-retryable 400 stops fallback, multi-part/thinking text joined
+  const origFetchV31 = globalThis.fetch;
+  try {
+    let googleCalls = 0;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('generativelanguage.googleapis.com')) {
+        googleCalls++;
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({ error: { message: 'Invalid API key' } })
+        };
+      }
+      if (String(url).includes('api.anthropic.com/v1/messages')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            content: [
+              { type: 'thinking', thinking: 'internal reasoning' },
+              { type: 'text', text: '{"objective":"Grid",' },
+              { type: 'text', text: '"keyConcepts":["grid"],"primaryExpressions":["grid"],"regexPatterns":[],"exclusions":[],"targetElements":["paragraphs"],"recommendedMinScore":10,"webQueries":["grid"]}' }
+            ]
+          })
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    };
+    const badKeyRes = await GeminiClient.interpretResearchPrompt('solar', {
+      aiProvider: 'gemini',
+      apiKey: 'AIzaBadKey',
+      model: 'gemini-2.5-flash'
+    });
+    assert.equal(badKeyRes.ok, false);
+    assert.equal(googleCalls, 1, 'Errore 400 non-retryable non deve ritentare su tutti i modelli fallback');
+
+    const thinkingRes = await GeminiClient.interpretResearchPrompt('grid', {
+      aiProvider: 'anthropic',
+      apiKey: 'sk-ant-test',
+      model: 'claude-sonnet-4-20250514'
+    });
+    assert.equal(thinkingRes.ok, true, 'callAnthropicProvider deve unire i blocchi text saltando thinking');
+    assert.equal(thinkingRes.strategy.objective, 'Grid');
+  } finally {
+    globalThis.fetch = origFetchV31;
+  }
+
+  // StorageManager: null guards
+  const nullProj = await StorageManager.createProject({ name: 'Null Guard Proj', description: null, expressions: null });
+  assert.equal(nullProj.description, '');
+  assert.equal(nullProj.expressions, '');
+  const nullAdd = await StorageManager.addExtractedItems(null, nullProj.id);
+  assert.equal(nullAdd.addedCount, 0);
+  const nullTagsUpdate = await StorageManager.updateItem(proj.id, firstItem.id, { tags: null });
+  assert.ok(Array.isArray(nullTagsUpdate.tags), 'updateItem deve gestire patch.tags: null senza crashare');
+
+  // Exporter: YAML backslash escaping, comma inside regex, invalid extractedAt, bracket/newline in link title
+  const yamlEdgeProj = {
+    id: 'yaml-edge',
+    name: 'YAML Edge',
+    expressions: '/\\d{1,3}/, solar',
+    items: [
+      {
+        id: 'y1',
+        text: 'Sample solar 123',
+        matchedTerms: ['solar'],
+        score: 50,
+        extractedAt: 'not-a-valid-date',
+        source: { title: 'Report [2026]\nDraft', url: 'https://example.com/r', canonicalUrl: 'https://example.com/r', domain: 'example.com' }
+      }
+    ]
+  };
+  const yamlEdgeMd = Exporter.generateMarkdown(yamlEdgeProj);
+  assert.ok(yamlEdgeMd.includes('expressions: ["/\\\\d{1,3}/", "solar"]'), 'YAML frontmatter deve fare escape di \\ e non spezzare /\\d{1,3}/ sulla virgola');
+  assert.ok(yamlEdgeMd.includes('[Report \\[2026\\] Draft](https://example.com/r)'), 'Titolo link Markdown deve fare escape di [ ] e newline');
+  assert.ok(yamlEdgeMd.includes('N/A'), 'extractedAt non valido deve produrre N/A invece di Invalid Date');
 
   console.log('   ✓ Regressioni ExpressionEngine, GeminiClient, StorageManager, Exporter OK');
   console.log('\nTUTTI I TEST COMPLETATI CON SUCCESSO!');

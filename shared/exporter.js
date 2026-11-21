@@ -103,6 +103,26 @@
     }
   }
 
+  function escapeYamlStr(str) {
+    return String(str || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]+/g, ' ');
+  }
+
+  function parseExpressionList(rawExpressions) {
+    if (root.ExpressionEngine && typeof root.ExpressionEngine.splitExpressions === 'function') {
+      return root.ExpressionEngine.splitExpressions(String(rawExpressions || ''));
+    }
+    return String(rawExpressions || '')
+      .split(/[\n;]+/)
+      .map(s => s.trim())
+      .filter(Boolean);
+  }
+
+  function formatSafeUtcDate(dateVal) {
+    if (!dateVal) return 'N/A';
+    const d = new Date(dateVal);
+    return Number.isNaN(d.getTime()) ? 'N/A' : d.toUTCString();
+  }
+
   /**
    * Genera il documento Markdown (.md) completo di YAML frontmatter,
    * sommario, bibliografia delle fonti e sezioni organizzate.
@@ -116,23 +136,20 @@
     const nowIso = new Date().toISOString();
 
     const domains = Array.from(new Set(sources.map(s => s.domain)));
-    const exprList = (project.expressions || '')
-      .split(/[\n;,]+/)
-      .map(s => s.trim())
-      .filter(Boolean);
+    const exprList = parseExpressionList(project.expressions);
 
     const lines = [];
 
     // 1. YAML Frontmatter
     lines.push('---');
-    lines.push(`title: "${(project.name || 'Research Report').replace(/"/g, '\\"')}"`);
-    lines.push(`project_id: "${project.id || ''}"`);
+    lines.push(`title: "${escapeYamlStr(project.name || 'Research Report')}"`);
+    lines.push(`project_id: "${escapeYamlStr(project.id || '')}"`);
     lines.push(`exported_at: "${nowIso}"`);
-    lines.push(`grouping_mode: "${groupBy}"`);
+    lines.push(`grouping_mode: "${escapeYamlStr(groupBy)}"`);
     lines.push(`total_extracts: ${items.length}`);
     lines.push(`unique_sources: ${sources.length}`);
-    lines.push(`domains: [${domains.map(d => `"${d}"`).join(', ')}]`);
-    lines.push(`expressions: [${exprList.map(e => `"${e.replace(/"/g, '\\"')}"`).join(', ')}]`);
+    lines.push(`domains: [${domains.map(d => `"${escapeYamlStr(d)}"`).join(', ')}]`);
+    lines.push(`expressions: [${exprList.map(e => `"${escapeYamlStr(e)}"`).join(', ')}]`);
     lines.push('legal_compliance: "Public web content extracted with source attribution and study license"');
     lines.push('---');
     lines.push('');
@@ -184,7 +201,8 @@
         groupItemsList.forEach((item, idx) => {
           const src = item.source || {};
           const headingLabel = item.heading ? `${item.heading} — ` : '';
-          lines.push(`#### ${groupIndex}.${idx + 1} ${headingLabel}[${src.title || src.domain || 'Source'}](${src.canonicalUrl || src.url || '#'})`);
+          const safeLinkTitle = String(src.title || src.domain || 'Source').replace(/[\r\n]+/g, ' ').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+          lines.push(`#### ${groupIndex}.${idx + 1} ${headingLabel}[${safeLinkTitle}](${src.canonicalUrl || src.url || '#'})`);
           lines.push('');
 
           const highlightedText = highlightTermsMarkdown(item.text || '', item.matchedTerms);
@@ -209,7 +227,7 @@
             src.author ? `**Author:** ${src.author}` : null,
             src.publishedDate ? `**Published:** ${src.publishedDate}` : null,
             `**License:** ${src.license || 'Unspecified'}`,
-            `**Extracted on:** ${item.extractedAt ? new Date(item.extractedAt).toUTCString() : 'N/A'}`
+            `**Extracted on:** ${formatSafeUtcDate(item.extractedAt)}`
           ].filter(Boolean);
 
           lines.push(`- ${metaParts.join(' | ')}`);
@@ -272,10 +290,7 @@
         id: project.id,
         name: project.name,
         description: project.description || '',
-        expressions: (project.expressions || '')
-          .split(/[\n;,]+/)
-          .map(s => s.trim())
-          .filter(Boolean),
+        expressions: parseExpressionList(project.expressions),
         createdAt: project.createdAt,
         updatedAt: project.updatedAt,
         stats: {

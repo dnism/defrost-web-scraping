@@ -360,11 +360,11 @@
     const now = new Date().toISOString();
     const newProj = {
       id: generateId('proj'),
-      name: (name || 'Nuovo Progetto').trim(),
-      description: description.trim(),
-      aiPrompt: (aiPrompt || '').trim(),
+      name: String(name || 'Nuovo Progetto').trim() || 'Nuovo Progetto',
+      description: String(description || '').trim(),
+      aiPrompt: String(aiPrompt || '').trim(),
       aiStrategy: aiStrategy || null,
-      expressions: expressions.trim(),
+      expressions: String(expressions || '').trim(),
       createdAt: now,
       updatedAt: now,
       items: []
@@ -478,8 +478,9 @@
     }
 
     const newItems = [];
-    for (const raw of rawItems) {
-      if (!raw || !raw.text || !raw.text.trim()) continue;
+    for (const raw of (Array.isArray(rawItems) ? rawItems : [])) {
+      const rawText = raw && raw.text != null ? String(raw.text).trim() : '';
+      if (!raw || !rawText) continue;
       const sourceUrl = (raw.source && (raw.source.canonicalUrl || raw.source.url)) || raw.url || '';
       const fp = computeItemFingerprint(sourceUrl, raw.text);
 
@@ -502,7 +503,7 @@
         const newItem = {
           id: generateId('item'),
           fingerprint: fp,
-          text: raw.text.trim(),
+          text: rawText,
           heading: (raw.heading || '').trim(),
           blockType: raw.blockType || 'paragraph',
           score: typeof raw.score === 'number' ? raw.score : 50,
@@ -559,7 +560,7 @@
 
     if (typeof patch.note === 'string') item.note = patch.note.trim();
     if (Array.isArray(patch.tags)) {
-      item.tags = Array.from(new Set(patch.tags.map(t => t.trim()).filter(Boolean)));
+      item.tags = Array.from(new Set(patch.tags.map(t => String(t || '').trim()).filter(Boolean)));
     }
     if (typeof patch.text === 'string' && patch.text.trim()) {
       item.text = patch.text.trim();

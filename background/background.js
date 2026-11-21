@@ -500,11 +500,13 @@
       const u = new URL(baseUrl);
       const h = u.hostname.toLowerCase();
       if (h.includes('scholar.google.') || (h.includes('google.') && u.pathname.includes('/search'))) {
-        u.searchParams.set('start', String(pageIndex * 10));
+        const baseStart = Math.max(0, parseInt(u.searchParams.get('start') || '0', 10) || 0);
+        u.searchParams.set('start', String(baseStart + pageIndex * 10));
         return u.href;
       }
       if (h.includes('bing.com') && u.pathname.includes('/search')) {
-        u.searchParams.set('first', String(pageIndex * 10 + 1));
+        const baseFirst = Math.max(1, parseInt(u.searchParams.get('first') || '1', 10) || 1);
+        u.searchParams.set('first', String(baseFirst + pageIndex * 10));
         return u.href;
       }
       return null;
@@ -581,9 +583,11 @@
             const clicked = await clickDuckDuckGoMoreResults(ddgTabId);
             if (!clicked) break;
             await new Promise(r => setTimeout(r, 950));
-            const batch = await extractSearchResultUrlsFromTab(ddgTabId, 50);
-            const added = addBatch(batch);
-            if (!batch || batch.length === 0 || (added === 0 && activeFilters.length === 0)) break;
+            const seenBefore = seen.size;
+            const extractCap = Math.max(50, maxCount * 4, 50 + (step + 1) * 25);
+            const batch = await extractSearchResultUrlsFromTab(ddgTabId, extractCap);
+            addBatch(batch);
+            if (!batch || batch.length === 0 || seen.size === seenBefore) break;
           }
         } else {
           for (let pageIdx = 1; pageIdx <= 5 && collected.length < maxCount; pageIdx++) {

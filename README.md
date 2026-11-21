@@ -12,17 +12,18 @@
 
 ### 2) Smart expression & scoring engine (`shared/expression-engine.js`)
 - **Natural language & morphological stemming:** supports Italian and English stemming, diacritic normalization, concept coverage, term proximity, and section heading boosts.
+- **Unbroken multi-word phrases & global exclusions:** plain 2–3 word lines (e.g. `solar power`) stay united as adjacent phrases, comma/newline separation works out of the box, and standalone `-term` lines apply globally across all rules.
 - **Advanced operators:**
   - `"exact phrase"` for exact phrase matching
   - `A OR B` / `A AND B` / `(A OR B) AND C` for boolean grouping
   - `-term` / `-"multi word"` / `NOT term` for exclusions
   - `+term` for mandatory terms
   - `prefix*` for wildcards
-  - `/pattern/i` for regular expressions
+  - `/pattern/i` for regular expressions (with built-in human-readable summaries in **Synced tags**)
 
 ### 3) Extraction & continuous scanner (`content/extractor.js`, `sidebar/sidebar.js`)
 - **Continuous live scanning:** captures relevant extracts in real time as you browse and scroll on the active tab, or scans across all open tabs.
-- **Interactive keywords & exclusions:** view all active keywords and `-NOT` exclusions as removable pills, add new ones inline (`+ Add keyword or -exclusion`), and keep them bidirectionally synced with the active detection expressions editor.
+- **Interactive keywords, exclusions & regex tags:** view active keywords, `-NOT` exclusions, and translated regex badges as removable pills, add new ones inline, and keep them bidirectionally synced with the expressions editor; open the built-in **`?`** guide in the sidebar rail anytime for syntax examples.
 - **Visual & media extraction:** extracts image alt text, figure captions, SVG chart labels, and supports optional **Auto AI OCR** for page charts and images.
 - **Semantic noise filtering & metadata:** strips navigation, footers, cookie banners, and ads, while associating each extract with its section heading (`h1`–`h6`), canonical URL, author, publication date, OpenGraph/Schema.org metadata, and detected license.
 
@@ -32,7 +33,7 @@
 - **Auto-scan & opened URLs list:** optionally runs a multi-tab scan automatically right after opening the tabs, and displays a clean numbered list (`1) 2) ...`) of all opened URLs.
 
 ### 5) Research dossier & structured exports (`shared/storage.js`, `shared/exporter.js`)
-- **Multi-project dossiers:** organizes extracts by project with automatic deduplication, tags, and notes in `browser.storage.local`.
+- **Multi-project dossiers & `Ctrl+F` search:** organizes extracts by project with automatic deduplication, and includes real-time `Ctrl+F`-style search with live text highlighting, match counter (`1/N`), and `▲` / `▼` navigation across all extracts.
 - **Export formats:**
   - **Markdown (`.md`)** — YAML frontmatter, summary stats, grouped extracts, and source bibliography.
   - **JSON (`.json`)** — self-describing schema with source catalog and extract records.

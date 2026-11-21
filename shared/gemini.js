@@ -262,7 +262,9 @@
       throw new Error(await parseApiErrorMessage(response));
     }
     const data = await response.json();
-    const text = data && Array.isArray(data.content) && data.content[0] && data.content[0].text;
+    const text = data && Array.isArray(data.content)
+      ? data.content.filter(b => b && typeof b.text === 'string').map(b => b.text).join('')
+      : '';
     if (!text) throw new Error('Empty response from Anthropic API.');
     return { rawText: text, usedModel: 'claude-3-5-haiku-latest' };
   }
@@ -451,7 +453,7 @@
 
         throw new Error(`AI API error (${status}): ${detail}`);
       } catch (err) {
-        if (/Invalid or unauthorized API key/i.test(err.message)) {
+        if (/^(?:Invalid or unauthorized API key|AI API error \(\d+\)):/.test(err.message)) {
           throw err;
         }
         lastErrorMsg = err.message || 'Network request failed.';
@@ -503,14 +505,16 @@
     }
 
     // Reached EOF without closing root object: close unterminated string & drop trailing partial item
-    if (inString && lastValidCommaOrOpen > 0) {
-      s = s.slice(0, lastValidCommaOrOpen);
+    if (inString && lastValidCommaOrOpen >= 0) {
+      s = s.slice(0, lastValidCommaOrOpen === 0 ? 1 : lastValidCommaOrOpen);
     }
     s = s.replace(/,\s*$/, '').replace(/:\s*$/, ': null');
     // Drop dangling object key without colon/value at EOF (e.g. {"a":1, "key")
     if (/,\s*"[^"]*"\s*$/.test(s)) {
       s = s.replace(/,\s*"[^"]*"\s*$/, '');
     }
+    // Replace truncated literal after colon (e.g. {"a": tr or {"a": 1.)
+    s = s.replace(/:\s*(?:t(?:r(?:ue?)?)?|f(?:a(?:l(?:se?)?)?)?|n(?:u(?:ll?)?)?|\d+\.)$/i, ': null');
     // Re-scan remaining open brackets
     const remStack = [];
     let remStr = false;
@@ -564,13 +568,15 @@
   }
 
   function extractRawResponseText(data) {
-    return data &&
+    const parts = data &&
       data.candidates &&
       data.candidates[0] &&
       data.candidates[0].content &&
-      data.candidates[0].content.parts &&
-      data.candidates[0].content.parts[0] &&
-      data.candidates[0].content.parts[0].text;
+      data.candidates[0].content.parts;
+    if (!Array.isArray(parts) || parts.length === 0) return '';
+    const nonThought = parts.filter(p => p && !p.thought && typeof p.text === 'string').map(p => p.text).join('');
+    if (nonThought) return nonThought;
+    return parts.filter(p => p && typeof p.text === 'string').map(p => p.text).join('');
   }
 
   async function parseApiErrorMessage(response) {

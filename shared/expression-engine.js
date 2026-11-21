@@ -119,6 +119,10 @@
         }
       }
 
+      if (ch === '\n' && inRegex) {
+        inRegex = false;
+      }
+
       if (!inQuotes && !inRegex && (ch === '\n' || ch === ';' || ch === ',')) {
         if (current.trim()) results.push(current.trim());
         current = '';
@@ -200,7 +204,13 @@
     parsed.excluded.forEach(ex => {
       ex.norm = normalizeDiacritics(ex.text);
       if (!ex.isPhrase) {
-        ex.re = new RegExp(`\\b${escapeRegex(ex.norm)}\\b`, 'i');
+        const hasWildcard = ex.norm.includes('*');
+        const pat = hasWildcard
+          ? ex.norm.split('*').map(escapeRegex).join('[a-z0-9]*')
+          : escapeRegex(ex.norm);
+        const startB = /^[a-z0-9_*]/.test(ex.norm) ? '\\b' : '';
+        const endB = /[a-z0-9_*]$/.test(ex.norm) ? '\\b' : '';
+        ex.re = new RegExp(`${startB}${pat}${endB}`, 'i');
       }
     });
 
@@ -285,6 +295,34 @@
     // 6. Rimuovi operatori booleani espliciti residui (AND, OR, NOT)
     working = working.replace(/\b(?:AND|OR|NOT)\b/g, ' ');
 
+    // 6b. Se è una riga breve senza operatori né wildcard (es. "mary lucier", "dawn burn paris", 2-3 parole),
+    // trattala come frase esatta/adiacente unita invece di spezzarla in parole indipendenti.
+    const cleanShortLine = working.replace(/\s+/g, ' ').trim();
+    const shortWords = cleanShortLine ? cleanShortLine.split(' ').filter(Boolean) : [];
+    const isPlainMultiWordPhrase = (
+      parsed.regexes.length === 0 &&
+      parsed.phrases.length === 0 &&
+      parsed.required.length === 0 &&
+      parsed.orGroups.length === 0 &&
+      !hasExplicitAnd &&
+      !cleanShortLine.includes('*') &&
+      !/\b(?:and|or|not)\b/i.test(cleanShortLine) &&
+      shortWords.length >= 2 &&
+      shortWords.length <= 3
+    );
+
+    if (isPlainMultiWordPhrase) {
+      const adjRe = buildAdjacentPhraseRegex(cleanShortLine);
+      parsed.phrases.push({
+        text: cleanShortLine,
+        norm: normalizeDiacritics(cleanShortLine),
+        required: true,
+        re: adjRe
+      });
+      parsed.normRaw = normalizeDiacritics(raw).replace(/\s+/g, ' ').trim();
+      return parsed;
+    }
+
     // 7. Estrai i token dell'espressione naturale rimanente
     const rawTokens = working
       .replace(/[^\p{L}\p{N}_*'-]+/gu, ' ')
@@ -327,6 +365,16 @@
     parsed.normRaw = normalizeDiacritics(raw).replace(/\s+/g, ' ').trim();
 
     return parsed;
+  }
+
+  function buildAdjacentPhraseRegex(phrase) {
+    const norm = normalizeDiacritics(phrase);
+    const rawWords = norm.split(/\s+/).filter(Boolean);
+    if (rawWords.length < 2) return null;
+    const words = rawWords.map(escapeRegex);
+    const startBound = /^[a-z0-9_]/.test(rawWords[0]) ? '\\b' : '';
+    const endBound = /[a-z0-9_]$/.test(rawWords[rawWords.length - 1]) ? '\\b' : '';
+    return new RegExp(`${startBound}${words.join('[\\s,;-]+')}${endBound}`, 'gi');
   }
 
   /**
@@ -441,19 +489,32 @@
       });
     }
 
-    // 3. Verifica Frasi Esatte ("...")
+    // 3. Verifica Frasi Esatte ("..." o frasi brevi unite come "mary lucier")
     for (const ph of parsedExpr.phrases) {
       const normPh = ph.norm || normalizeDiacritics(ph.text);
-      const idx = normFull.indexOf(normPh);
-      if (idx === -1) {
+      let isFound = false;
+      let matchedSpan = ph.text;
+      if (ph.re) {
+        const found = collectOriginalMatches(fullText, normFull, ph.re);
+        if (found.length > 0) {
+          isFound = true;
+          matchedSpan = found[0];
+        }
+      } else {
+        isFound = normFull.indexOf(normPh) !== -1;
+      }
+
+      if (!isFound) {
         if (ph.required) {
           return { matched: false, score: 0, matchedTerms: [], highlights: [] };
         }
       } else {
         score += 30;
-        if (normHeading.includes(normPh)) score += 15;
+        if (ph.re ? (ph.re.lastIndex = 0, ph.re.test(normHeading)) : normHeading.includes(normPh)) {
+          score += 15;
+        }
         matchedTerms.add(ph.text);
-        highlightSpans.add(ph.text);
+        highlightSpans.add(matchedSpan);
       }
     }
 
@@ -608,7 +669,40 @@
     const exprStrings = Array.isArray(rawExpressionsInput)
       ? rawExpressionsInput
       : splitExpressions(rawExpressionsInput);
-    const parsedList = exprStrings.map(parseSingleExpression).filter(Boolean);
+    const rawParsed = exprStrings.map(parseSingleExpression).filter(Boolean);
+
+    // Collect standalone exclusion-only lines (e.g. "-1975" on its own line) as global exclusions
+    const globalExclusions = [];
+    const positiveList = [];
+    for (const p of rawParsed) {
+      const hasPositive = (
+        p.regexes.length > 0 ||
+        p.phrases.length > 0 ||
+        p.required.length > 0 ||
+        p.orGroups.length > 0 ||
+        p.concepts.length > 0
+      );
+      if (!hasPositive && p.excluded.length > 0) {
+        globalExclusions.push(...p.excluded);
+      } else if (hasPositive) {
+        positiveList.push(p);
+      }
+    }
+
+    if (globalExclusions.length > 0) {
+      for (const p of positiveList) {
+        const seenNorms = new Set(p.excluded.map(ex => `${ex.isPhrase ? 'P' : 'W'}:${ex.norm}`));
+        for (const gx of globalExclusions) {
+          const k = `${gx.isPhrase ? 'P' : 'W'}:${gx.norm}`;
+          if (!seenNorms.has(k)) {
+            seenNorms.add(k);
+            p.excluded.push(gx);
+          }
+        }
+      }
+    }
+
+    const parsedList = positiveList;
 
     if (parsedCache.size >= PARSED_CACHE_LIMIT) {
       parsedCache.delete(parsedCache.keys().next().value);
@@ -753,8 +847,10 @@
   function extractTermsFromExpressions(text) {
     const keywords = [];
     const exclusions = [];
+    const regexes = [];
     const seenKw = new Set();
     const seenExcl = new Set();
+    const seenRx = new Set();
 
     const addKw = (val) => {
       const clean = String(val || '').trim();
@@ -776,30 +872,60 @@
       exclusions.push(clean);
     };
 
+    const addRx = (val) => {
+      const clean = String(val || '').trim();
+      if (!clean) return;
+      const key = clean.toLowerCase();
+      if (seenRx.has(key)) return;
+      seenRx.add(key);
+      regexes.push(clean);
+    };
+
     const rawLines = splitExpressions(String(text || ''));
     for (const line of rawLines) {
       const trimmed = line.trim();
-      if (!trimmed || /^\/.*\/[gimsuy]*$/.test(trimmed)) continue;
+      if (!trimmed) continue;
 
-      // Tokenize quoted exclusions, bare exclusions, +quoted phrases, quoted phrases, and standalone tokens
-      const tokenRegex = /-"([^"]+)"|-([^\s()]+)|\+"([^"]+)"|"([^"]+)"|([^\s()]+)/g;
+      // Extract pure or inline regexes (/pattern/flags) first
+      let withoutRegex = trimmed.replace(/(?:^|\s)(\/(?:[^/\\]|\\.)+\/[gimsuy]*)/g, (m, rxToken) => {
+        addRx(rxToken.trim());
+        return ' ';
+      }).trim();
+
+      if (!withoutRegex) continue;
+
+      // Extract any exclusions (-"phrase", NOT "phrase", -word, or NOT word) in left-to-right order
+      let remainder = withoutRegex
+        .replace(/(?:^|\s)(?:NOT\s+|-)(?:["«]([^"»]+)["»]|([^\s()]+))/g, (_, phr, tok) => {
+          addExcl(phr !== undefined ? phr : tok);
+          return ' ';
+        })
+        .trim();
+
+      if (!remainder) continue;
+
+      const hasBooleanOrQuotes = /(?:\b(?:AND|OR|NOT)\b|\||[()"])/.test(remainder);
+      if (!hasBooleanOrQuotes) {
+        // Plain single or multi-word line (e.g. "solar power"): keep whole phrase together
+        addKw(remainder.replace(/^\++/, '').trim());
+        continue;
+      }
+
+      // Boolean/quoted line: extract individual quoted phrases and operand tokens
+      const tokenRegex = /\+"([^"]+)"|"([^"]+)"|([^\s()]+)/g;
       let match;
-      while ((match = tokenRegex.exec(trimmed)) !== null) {
+      while ((match = tokenRegex.exec(remainder)) !== null) {
         if (match[1] !== undefined) {
-          addExcl(match[1]);
+          addKw(match[1]);
         } else if (match[2] !== undefined) {
-          addExcl(match[2]);
+          addKw(match[2]);
         } else if (match[3] !== undefined) {
-          addKw(match[3]);
-        } else if (match[4] !== undefined) {
-          addKw(match[4]);
-        } else if (match[5] !== undefined) {
-          addKw(match[5].replace(/^[()+]+|[()]+$/g, ''));
+          addKw(match[3].replace(/^[()+]+|[()]+$/g, ''));
         }
       }
     }
 
-    return { keywords, exclusions };
+    return { keywords, exclusions, regexes };
   }
 
   /**
@@ -953,6 +1079,88 @@
     return strategy;
   }
 
+  /**
+   * Translates a /pattern/flags regex string into a concise human-readable label
+   * so Synced tags show what the regex represents instead of raw syntax.
+   */
+  function describeRegex(rxString) {
+    const raw = String(rxString || '').trim();
+    const m = raw.match(/^\/(.+)\/([gimsuy]*)$/);
+    if (!m) return raw;
+
+    let body = m[1].trim();
+    const core = body.replace(/^\\b|\\b$/g, '').trim();
+
+    // 1. Year ranges: \b202[0-6]\b or \b20(2[0-6])\b or \b(19|20)\d{2}\b
+    const yearRangeMatch = core.match(/^(\d{2,3})\[(\d)-(\d)\]$/);
+    if (yearRangeMatch) {
+      const prefix = yearRangeMatch[1];
+      return `Years ${prefix}${yearRangeMatch[2]}–${prefix}${yearRangeMatch[3]}`;
+    }
+    const yearGroupMatch = core.match(/^(\d{2})\((\d)\[(\d)-(\d)\]\)$/);
+    if (yearGroupMatch) {
+      const prefix = `${yearGroupMatch[1]}${yearGroupMatch[2]}`;
+      return `Years ${prefix}${yearGroupMatch[3]}–${prefix}${yearGroupMatch[4]}`;
+    }
+    if (/^(?:\(\\d\{4\}\)|\\d\{4\}|\(19\|20\)\\d\{2\})$/.test(core)) {
+      return '4-digit years';
+    }
+
+    // 2. Percentages: \d+...%
+    if (/\\d/.test(core) && /%/.test(core)) {
+      return 'Percentages (%)';
+    }
+
+    // 3. Currency amounts (require escaped \$ or currency codes/symbols, not end-of-line $ anchor)
+    if (/\\d/.test(core) && /(?:€|\\\$|\[[^\]]*\$[^\]]*\]|\b(?:EUR|USD|GBP)\b)/i.test(core)) {
+      return 'Currency amounts';
+    }
+
+    // 4. Numbers + explicit units group: \b\d+(?:[.,]\d+)?\s*(MW|GW|kWh)\b
+    const unitMatch = core.match(/\\d\+.*\(([^()]+)\)$/);
+    if (unitMatch && /\|/.test(unitMatch[1]) && !unitMatch[1].startsWith('?:')) {
+      const units = unitMatch[1].split('|').map(u => u.trim()).filter(Boolean);
+      if (units.length > 0) return `Numbers (${units.join(' / ')})`;
+    }
+
+    // 5. Word prefix with alternative suffixes: telemedic(ina|ine|al)
+    const suffixVariantMatch = core.match(/^([a-zA-Z0-9àèéìòùÀÈÉÌÒÙ_-]+)\(([^()]+)\)$/);
+    if (suffixVariantMatch && /\|/.test(suffixVariantMatch[2])) {
+      const prefix = suffixVariantMatch[1];
+      const alts = suffixVariantMatch[2].split('|').map(s => `${prefix}${s.trim()}`).filter(Boolean);
+      if (alts.length > 0 && alts.length <= 5) return alts.join(' / ');
+    }
+
+    // 6. Clean top-level alternation: (ISO\s*\d+|HL7\s*FHIR|GDPR) or (?:...)
+    const unwrapped = core.replace(/^\((?:\?:)?(.+)\)$/, '$1');
+    if (/\|/.test(unwrapped) && !/\([^)]*\|/.test(unwrapped)) {
+      const parts = unwrapped
+        .split('|')
+        .map(p => p.replace(/\\b/g, '').replace(/\\s[*+?]?/g, ' ').replace(/\\d\+/g, '#').replace(/\\d\*/g, '#').trim())
+        .filter(Boolean);
+      if (parts.length > 1 && parts.length <= 5) {
+        return parts.join(' / ');
+      }
+    }
+
+    // 7. Pure digits
+    if (/^(?:\\d\+|\[0-9\]\+)$/.test(core)) {
+      return 'Numbers';
+    }
+
+    // 8. Generic humanizer fallback
+    const humanized = core
+      .replace(/\\b/g, '')
+      .replace(/\\s[*+?]?/g, ' ')
+      .replace(/\\d\+/g, '<num>')
+      .replace(/\\d\{(\d+)\}/g, '<$1 digits>')
+      .replace(/\\w\+/g, '<word>')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+
+    return humanized ? `Pattern: ${humanized}` : `Regex: ${raw}`;
+  }
+
   const ExpressionEngine = {
     splitExpressions,
     parseSingleExpression,
@@ -962,6 +1170,7 @@
     normalizeDiacritics,
     compileStrategyExpressions,
     extractTermsFromExpressions,
+    describeRegex,
     buildScrapingPlanFromQuestion
   };
 

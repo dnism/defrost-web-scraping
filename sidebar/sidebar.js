@@ -7,6 +7,7 @@
 
   const els = {
     // Navigation Rail
+    railNavHelp: document.getElementById('railNavHelp'),
     railNavDashboard: document.getElementById('railNavDashboard'),
     railNavTabOpener: document.getElementById('railNavTabOpener'),
     railNavDocs: document.getElementById('railNavDocs'),
@@ -14,6 +15,7 @@
     railNavSettings: document.getElementById('railNavSettings'),
 
     // Views
+    viewHelp: document.getElementById('viewHelp'),
     viewDashboard: document.getElementById('viewDashboard'),
     viewTabOpener: document.getElementById('viewTabOpener'),
     tabOpenerFiltersBar: document.getElementById('tabOpenerFiltersBar'),
@@ -36,6 +38,7 @@
     btnCancelNewProject: document.getElementById('btnCancelNewProject'),
 
     // KPI Banner
+    kpiBanner: document.getElementById('kpiBanner'),
     statExtracts: document.getElementById('statExtracts'),
     statSources: document.getElementById('statSources'),
     statLiveMatches: document.getElementById('statLiveMatches'),
@@ -78,11 +81,14 @@
     btnClipSelection: document.getElementById('btnClipSelection'),
     btnClearHighlights: document.getElementById('btnClearHighlights'),
     btnScanVisualsAi: document.getElementById('btnScanVisualsAi'),
-    scanStatusBanner: document.getElementById('scanStatusBanner'),
 
     // Dossier & Items
     savedItemsList: document.getElementById('savedItemsList'),
     filterSavedInput: document.getElementById('filterSavedInput'),
+    filterFindNav: document.getElementById('filterFindNav'),
+    filterMatchCount: document.getElementById('filterMatchCount'),
+    btnFindPrev: document.getElementById('btnFindPrev'),
+    btnFindNext: document.getElementById('btnFindNext'),
     btnClearItems: document.getElementById('btnClearItems'),
 
     // Export
@@ -112,8 +118,7 @@
     geminiApiKeyInput: document.getElementById('geminiApiKeyInput'),
     btnToggleKeyVisibility: document.getElementById('btnToggleKeyVisibility'),
     geminiModelSelect: document.getElementById('geminiModelSelect'),
-    btnTestGeminiKey: document.getElementById('btnTestGeminiKey'),
-    geminiTestFeedback: document.getElementById('geminiTestFeedback')
+    btnTestGeminiKey: document.getElementById('btnTestGeminiKey')
   };
 
   let currentState = null;
@@ -135,6 +140,7 @@
   // Rail Navigation
   function switchView(viewName) {
     const navMap = {
+      help: { btn: els.railNavHelp, view: els.viewHelp },
       dashboard: { btn: els.railNavDashboard, view: els.viewDashboard },
       tabOpener: { btn: els.railNavTabOpener, view: els.viewTabOpener },
       docs: { btn: els.railNavDocs, view: els.viewDocs },
@@ -144,6 +150,7 @@
 
     Object.keys(navMap).forEach(key => {
       const item = navMap[key];
+      if (!item.btn || !item.view) return;
       if (key === viewName) {
         item.btn.classList.add('active');
         item.view.classList.remove('hidden');
@@ -153,12 +160,19 @@
       }
     });
 
+    if (els.kpiBanner) {
+      els.kpiBanner.classList.toggle('hidden', viewName === 'settings' || viewName === 'help');
+    }
+
     if (viewName === 'docs' && docsDirty) {
       docsDirty = false;
       renderSavedItems();
     }
   }
 
+  if (els.railNavHelp) {
+    els.railNavHelp.addEventListener('click', () => switchView('help'));
+  }
   els.railNavDashboard.addEventListener('click', () => switchView('dashboard'));
   if (els.railNavTabOpener) {
     els.railNavTabOpener.addEventListener('click', () => switchView('tabOpener'));
@@ -184,15 +198,31 @@
 
   function showStatus(message, isError = false, timeoutMs = 5000) {
     clearTimeout(statusBannerTimer);
-    els.scanStatusBanner.textContent = message;
-    els.scanStatusBanner.classList.remove('hidden');
-    els.scanStatusBanner.style.color = isError ? '#dc2626' : 'var(--text-main)';
-    els.footerStatusPill.textContent = message.slice(0, 36);
+    if (!els.footerStatusPill) return;
+    const cleanMsg = String(message || '').trim();
+    if (!cleanMsg) {
+      els.footerStatusPill.textContent = '';
+      els.footerStatusPill.title = '';
+      els.footerStatusPill.classList.add('hidden');
+      return;
+    }
+    els.footerStatusPill.textContent = cleanMsg;
+    els.footerStatusPill.title = cleanMsg;
+    els.footerStatusPill.style.color = isError ? '#dc2626' : 'var(--text-main)';
+    els.footerStatusPill.classList.remove('hidden');
     if (timeoutMs > 0) {
       statusBannerTimer = setTimeout(() => {
-        if (els.scanStatusBanner.textContent === message) {
-          els.scanStatusBanner.classList.add('hidden');
-          els.footerStatusPill.textContent = isContinuousScanRunning ? 'Live Scanner Active' : 'Defrost Ready';
+        if (els.footerStatusPill && els.footerStatusPill.textContent === cleanMsg) {
+          if (isContinuousScanRunning) {
+            els.footerStatusPill.textContent = 'Live scanner running...';
+            els.footerStatusPill.title = 'Live scanner running...';
+            els.footerStatusPill.style.color = 'var(--text-main)';
+            els.footerStatusPill.classList.remove('hidden');
+          } else {
+            els.footerStatusPill.textContent = '';
+            els.footerStatusPill.title = '';
+            els.footerStatusPill.classList.add('hidden');
+          }
         }
       }, timeoutMs);
     }
@@ -210,12 +240,21 @@
       els.btnScanActive.classList.add('btn-scan-running');
       els.scanLiveDot.classList.remove('hidden');
       els.scanActiveLabel.textContent = 'Stop scan';
-      els.footerStatusPill.textContent = 'Live scanner running...';
+      if (els.footerStatusPill && (els.footerStatusPill.classList.contains('hidden') || !els.footerStatusPill.textContent)) {
+        els.footerStatusPill.textContent = 'Live scanner running...';
+        els.footerStatusPill.title = 'Live scanner running...';
+        els.footerStatusPill.style.color = 'var(--text-main)';
+        els.footerStatusPill.classList.remove('hidden');
+      }
     } else {
       els.btnScanActive.classList.remove('btn-scan-running');
       els.scanLiveDot.classList.add('hidden');
       els.scanActiveLabel.textContent = 'Continuous scan';
-      els.footerStatusPill.textContent = 'Defrost Ready';
+      if (els.footerStatusPill && els.footerStatusPill.textContent === 'Live scanner running...') {
+        els.footerStatusPill.textContent = '';
+        els.footerStatusPill.title = '';
+        els.footerStatusPill.classList.add('hidden');
+      }
     }
   }
 
@@ -330,12 +369,14 @@
         objective: 'Manual expressions',
         keyConcepts: [],
         primaryExpressions: [],
-        exclusions: []
+        exclusions: [],
+        regexPatterns: []
       };
     }
     if (!Array.isArray(activeProject.aiStrategy.keyConcepts)) activeProject.aiStrategy.keyConcepts = [];
     if (!Array.isArray(activeProject.aiStrategy.primaryExpressions)) activeProject.aiStrategy.primaryExpressions = [];
     if (!Array.isArray(activeProject.aiStrategy.exclusions)) activeProject.aiStrategy.exclusions = [];
+    if (!Array.isArray(activeProject.aiStrategy.regexPatterns)) activeProject.aiStrategy.regexPatterns = [];
 
     const rawExpr = els.expressionsInput ? els.expressionsInput.value.trim() : '';
     if (
@@ -348,11 +389,13 @@
       if (
         activeProject.aiStrategy.keyConcepts.length === 0 &&
         activeProject.aiStrategy.exclusions.length === 0 &&
+        activeProject.aiStrategy.regexPatterns.length === 0 &&
         window.ExpressionEngine.extractTermsFromExpressions
       ) {
         const parsed = window.ExpressionEngine.extractTermsFromExpressions(rawExpr);
         activeProject.aiStrategy.keyConcepts = parsed.keywords || [];
         activeProject.aiStrategy.exclusions = parsed.exclusions || [];
+        activeProject.aiStrategy.regexPatterns = parsed.regexes || [];
       }
     }
     return activeProject.aiStrategy;
@@ -428,13 +471,31 @@
     await syncStrategyFromPillsChange(strategy);
   }
 
+  async function removeScannerRegex(rx) {
+    const strategy = ensureActiveStrategy();
+    if (!strategy) return;
+    const targetLower = String(rx || '').trim().toLowerCase();
+    strategy.regexPatterns = (strategy.regexPatterns || []).filter(
+      r => String(r || '').trim().toLowerCase() !== targetLower
+    );
+    strategy.primaryExpressions = (strategy.primaryExpressions || [])
+      .map(line => removeTermFromExpressionLine(line, rx))
+      .filter(line => line && !/^(-(?:"[^"]+"|\S+)\s*)+$/.test(line.trim()));
+    await syncStrategyFromPillsChange(strategy);
+  }
+
   async function addScannerKeywordOrExclusion(rawInput) {
     const clean = String(rawInput || '').trim();
     if (!clean) return;
     const strategy = ensureActiveStrategy();
     if (!strategy) return;
 
-    if (clean.startsWith('-')) {
+    if (/^\/(?:[^/\\]|\\.)+\/[gimsuy]*$/.test(clean)) {
+      const exists = (strategy.regexPatterns || []).some(r => String(r || '').trim().toLowerCase() === clean.toLowerCase());
+      if (!exists) {
+        strategy.regexPatterns.push(clean);
+      }
+    } else if (clean.startsWith('-')) {
       const excl = clean.replace(/^-+/, '').trim();
       if (!excl) return;
       const exists = (strategy.exclusions || []).some(e => String(e || '').trim().toLowerCase() === excl.toLowerCase());
@@ -460,14 +521,22 @@
 
     let keywords = [];
     let exclusions = [];
+    let regexes = [];
 
-    if (strategy && ((strategy.keyConcepts && strategy.keyConcepts.length) || (strategy.exclusions && strategy.exclusions.length))) {
+    if (
+      strategy &&
+      ((strategy.keyConcepts && strategy.keyConcepts.length) ||
+       (strategy.exclusions && strategy.exclusions.length) ||
+       (strategy.regexPatterns && strategy.regexPatterns.length))
+    ) {
       keywords = Array.from(new Set((strategy.keyConcepts || []).map(k => String(k || '').trim()).filter(Boolean)));
       exclusions = Array.from(new Set((strategy.exclusions || []).map(e => String(e || '').trim().replace(/^-+/, '')).filter(Boolean)));
+      regexes = Array.from(new Set((strategy.regexPatterns || []).map(r => String(r || '').trim()).filter(Boolean)));
     } else if (els.expressionsInput && els.expressionsInput.value.trim() && window.ExpressionEngine && window.ExpressionEngine.extractTermsFromExpressions) {
       const parsed = window.ExpressionEngine.extractTermsFromExpressions(els.expressionsInput.value);
-      keywords = parsed.keywords;
-      exclusions = parsed.exclusions;
+      keywords = parsed.keywords || [];
+      exclusions = parsed.exclusions || [];
+      regexes = parsed.regexes || [];
     }
 
     keywords.forEach(kw => {
@@ -504,7 +573,27 @@
       els.scannerKeywordsList.appendChild(pill);
     });
 
-    els.scannerKeywordsCount.textContent = String(keywords.length + exclusions.length);
+    regexes.forEach(rx => {
+      const pill = document.createElement('span');
+      pill.className = 'tag-pill regex removable';
+      pill.title = `Regex: ${rx}`;
+      const label = document.createElement('span');
+      label.textContent = (window.ExpressionEngine && window.ExpressionEngine.describeRegex)
+        ? window.ExpressionEngine.describeRegex(rx)
+        : rx;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tag-pill-remove';
+      btn.title = `Remove regex "${rx}"`;
+      btn.setAttribute('aria-label', `Remove regex ${rx}`);
+      btn.textContent = '×';
+      btn.addEventListener('click', () => removeScannerRegex(rx));
+      pill.appendChild(label);
+      pill.appendChild(btn);
+      els.scannerKeywordsList.appendChild(pill);
+    });
+
+    els.scannerKeywordsCount.textContent = String(keywords.length + exclusions.length + regexes.length);
   }
 
   async function applyStrategyToScanner(strategy, promptText, persist = true) {
@@ -590,11 +679,16 @@
     if (!strategy) {
       return `null::${topCount}::${rawExpr}`;
     }
-    const hasExplicitTerms = (strategy.keyConcepts && strategy.keyConcepts.length) || (strategy.exclusions && strategy.exclusions.length);
+    const hasExplicitTerms = (
+      (strategy.keyConcepts && strategy.keyConcepts.length) ||
+      (strategy.exclusions && strategy.exclusions.length) ||
+      (strategy.regexPatterns && strategy.regexPatterns.length)
+    );
     return JSON.stringify({
       o: strategy.objective || '',
       k: strategy.keyConcepts || [],
       e: strategy.exclusions || [],
+      r: strategy.regexPatterns || [],
       w: strategy.webQueries || [],
       t: strategy.targetElements || [],
       m: strategy.recommendedMinScore,
@@ -699,27 +793,87 @@
     return regex;
   }
 
-  function appendHighlightedText(container, text, terms) {
+  let findMatchMarks = [];
+  let activeFindIdx = -1;
+
+  function updateFindMatches(resetIndex = true) {
+    const query = (els.filterSavedInput ? els.filterSavedInput.value : '').trim();
+    if (!els.filterFindNav || !els.filterMatchCount) return;
+
+    if (!query) {
+      findMatchMarks = [];
+      activeFindIdx = -1;
+      els.filterFindNav.classList.add('hidden');
+      els.filterMatchCount.textContent = '0/0';
+      return;
+    }
+
+    findMatchMarks = Array.from(els.savedItemsList.querySelectorAll('mark.find-highlight'));
+    els.filterFindNav.classList.remove('hidden');
+
+    if (findMatchMarks.length === 0) {
+      activeFindIdx = -1;
+      els.filterMatchCount.textContent = '0/0';
+      return;
+    }
+
+    if (resetIndex || activeFindIdx < 0 || activeFindIdx >= findMatchMarks.length) {
+      activeFindIdx = 0;
+    }
+
+    findMatchMarks.forEach((m, i) => m.classList.toggle('find-current', i === activeFindIdx));
+    els.filterMatchCount.textContent = `${activeFindIdx + 1}/${findMatchMarks.length}`;
+    if (findMatchMarks[activeFindIdx]) {
+      findMatchMarks[activeFindIdx].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }
+
+  function stepFindMatch(delta) {
+    if (findMatchMarks.length === 0) return;
+    const prevIdx = activeFindIdx;
+    activeFindIdx = (activeFindIdx + delta + findMatchMarks.length) % findMatchMarks.length;
+    if (prevIdx >= 0 && prevIdx < findMatchMarks.length && prevIdx !== activeFindIdx) {
+      findMatchMarks[prevIdx].classList.remove('find-current');
+    }
+    if (findMatchMarks[activeFindIdx]) {
+      findMatchMarks[activeFindIdx].classList.add('find-current');
+      findMatchMarks[activeFindIdx].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+    if (els.filterMatchCount) {
+      els.filterMatchCount.textContent = `${activeFindIdx + 1}/${findMatchMarks.length}`;
+    }
+  }
+
+  function appendHighlightedText(container, text, terms, findQuery = '') {
     container.textContent = '';
     const cleanText = String(text || '');
+    const cleanQuery = String(findQuery || '').trim();
     const validTerms = Array.from(new Set((terms || []).map(t => String(t).trim()).filter(t => t.length >= 2)))
       .sort((a, b) => b.length - a.length)
       .slice(0, 10);
 
-    if (validTerms.length === 0) {
+    const highlightPool = cleanQuery
+      ? [cleanQuery, ...validTerms.filter(t => t.toLowerCase() !== cleanQuery.toLowerCase())]
+      : validTerms;
+
+    if (highlightPool.length === 0) {
       container.textContent = cleanText;
       return;
     }
 
     try {
-      const regex = getHighlightRegex(validTerms);
+      const regex = getHighlightRegex(highlightPool);
       const parts = cleanText.split(regex);
       const frag = document.createDocumentFragment();
+      const queryLower = cleanQuery.toLowerCase();
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
         if (!part) continue;
         if (i % 2 === 1) {
           const mark = document.createElement('mark');
+          if (queryLower && part.toLowerCase().includes(queryLower)) {
+            mark.className = 'find-highlight';
+          }
           mark.textContent = part;
           frag.appendChild(mark);
         } else {
@@ -839,7 +993,9 @@
             (item.text || '') + '\n' +
             (item.heading || '') + '\n' +
             (item.note || '') + '\n' +
-            (item.source ? ((item.source.title || '') + ' ' + (item.source.domain || '')) : '')
+            (item.source
+              ? ((item.source.title || '') + ' ' + (item.source.domain || '') + ' ' + (item.source.url || '') + ' ' + (item.source.canonicalUrl || '') + ' ' + (item.source.author || ''))
+              : '')
           ).toLowerCase();
           if (hay.includes(filterQuery)) return true;
           return (item.tags && item.tags.some(t => t.toLowerCase().includes(filterQuery))) ||
@@ -858,6 +1014,7 @@
         ? 'No extracts saved yet. Formulate a research inquiry with AI and launch Continuous Scan.'
         : 'No extracts match the search filter.';
       els.savedItemsList.appendChild(empty);
+      updateFindMatches(true);
       return;
     }
 
@@ -887,13 +1044,34 @@
 
       const heading = document.createElement('span');
       heading.className = 'extract-heading-text';
-      heading.textContent = item.heading || (item.source && item.source.title) || 'Extract';
+      const headingText = item.heading || (item.source && item.source.title) || 'Extract';
+      if (filterQuery) {
+        appendHighlightedText(heading, headingText, [], filterQuery);
+      } else {
+        heading.textContent = headingText;
+      }
 
       const delBtn = document.createElement('button');
-      delBtn.className = 'btn-frost btn-xs btn-danger-soft';
-      delBtn.style.padding = '3px 8px';
-      delBtn.textContent = 'Remove';
+      delBtn.type = 'button';
+      delBtn.className = 'extract-remove-btn';
       delBtn.title = 'Remove this extract';
+      delBtn.setAttribute('aria-label', 'Remove this extract');
+      const delSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      delSvg.setAttribute('viewBox', '0 0 24 24');
+      delSvg.setAttribute('fill', 'none');
+      delSvg.setAttribute('stroke', 'currentColor');
+      delSvg.setAttribute('stroke-width', '2.2');
+      delSvg.setAttribute('stroke-linecap', 'round');
+      delSvg.setAttribute('stroke-linejoin', 'round');
+      const l1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      l1.setAttribute('x1', '18'); l1.setAttribute('y1', '6');
+      l1.setAttribute('x2', '6'); l1.setAttribute('y2', '18');
+      const l2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      l2.setAttribute('x1', '6'); l2.setAttribute('y1', '6');
+      l2.setAttribute('x2', '18'); l2.setAttribute('y2', '18');
+      delSvg.appendChild(l1);
+      delSvg.appendChild(l2);
+      delBtn.appendChild(delSvg);
       delBtn.addEventListener('click', async () => {
         await window.StorageManager.deleteItem(activeProject.id, item.id);
         lastSavedItemsSig = '';
@@ -906,7 +1084,10 @@
 
       const bodyText = document.createElement('div');
       bodyText.className = 'extract-body-text';
-      appendHighlightedText(bodyText, item.text, item.matchedTerms);
+      if (filterQuery && (item.text || '').toLowerCase().includes(filterQuery)) {
+        bodyText.classList.add('expanded');
+      }
+      appendHighlightedText(bodyText, item.text, item.matchedTerms, filterQuery);
       bodyText.addEventListener('click', () => bodyText.classList.toggle('expanded'));
 
       const footerMeta = document.createElement('div');
@@ -918,7 +1099,12 @@
       srcAnchor.href = src.canonicalUrl || src.url || '#';
       srcAnchor.target = '_blank';
       srcAnchor.rel = 'noopener noreferrer';
-      srcAnchor.textContent = `Source: ${src.domain || 'web'}`;
+      const srcLabel = `Source: ${src.domain || 'web'}`;
+      if (filterQuery) {
+        appendHighlightedText(srcAnchor, srcLabel, [], filterQuery);
+      } else {
+        srcAnchor.textContent = srcLabel;
+      }
       footerMeta.appendChild(srcAnchor);
 
       if (src.author) {
@@ -958,6 +1144,7 @@
     }
 
     els.savedItemsList.appendChild(frag);
+    updateFindMatches(true);
   }
 
   let isVerifyingKey = false;
@@ -1150,7 +1337,6 @@
 
     els.btnTestGeminiKey.textContent = 'Verify & Connect Ollama';
     els.btnTestGeminiKey.disabled = false;
-    els.geminiTestFeedback.classList.remove('hidden');
 
     if (res && res.ok) {
       populateOllamaDatalists(res.availableModels, res.visionModels);
@@ -1171,14 +1357,10 @@
         ollamaVisionModel: chosenVisionModel
       });
       els.geminiModelBadge.textContent = `Ollama · ${chosenTextModel}`;
-      els.geminiTestFeedback.textContent = res.message || `Ollama connected (${chosenTextModel} ready).`;
-      els.geminiTestFeedback.style.color = '#059669';
-      showStatus(res.message || 'Local Ollama connected.');
+      showStatus(res.message || `Ollama connected (${chosenTextModel} ready).`);
       return true;
     } else {
       const errMsg = (res && res.error) || 'Unable to connect to local Ollama';
-      els.geminiTestFeedback.textContent = `Ollama settings saved. Connection error: ${errMsg}`;
-      els.geminiTestFeedback.style.color = '#dc2626';
       showStatus(`Ollama error: ${errMsg}`, true);
       return false;
     }
@@ -1193,9 +1375,6 @@
     const rawKey = String(rawKeyInput || '').trim();
     const model = els.geminiModelSelect.value || 'gemini-2.5-flash';
     if (!rawKey) {
-      els.geminiTestFeedback.textContent = 'Paste your AI API key first.';
-      els.geminiTestFeedback.classList.remove('hidden');
-      els.geminiTestFeedback.style.color = '#dc2626';
       showStatus('Paste your AI API key first.', true);
       return false;
     }
@@ -1240,7 +1419,6 @@
     }
     isVerifyingKey = false;
 
-    els.geminiTestFeedback.classList.remove('hidden');
     if (res && res.ok) {
       const activeModel = res.resolvedModel || saved.geminiModel;
       if (activeModel !== saved.geminiModel) {
@@ -1248,14 +1426,10 @@
         els.geminiModelSelect.value = activeModel;
         els.geminiModelBadge.textContent = activeModel;
       }
-      els.geminiTestFeedback.textContent = res.message || 'Key saved! AI API connection verified successfully.';
-      els.geminiTestFeedback.style.color = '#059669';
       showStatus(res.message || 'AI API key verified and saved.');
       return true;
     } else {
       const errMsg = (res && res.error) || 'Connection test failed';
-      els.geminiTestFeedback.textContent = `Key saved locally. Verification error: ${errMsg}`;
-      els.geminiTestFeedback.style.color = '#dc2626';
       showStatus(`API key error: ${errMsg}`, true);
       return false;
     }
@@ -1350,11 +1524,7 @@
       }
     }
     if (saved.geminiApiKey) {
-      els.geminiTestFeedback.textContent = 'Key saved in local profile. Click "Verify & Save Key" to test.';
-      els.geminiTestFeedback.classList.remove('hidden');
-      els.geminiTestFeedback.style.color = '#059669';
-    } else {
-      els.geminiTestFeedback.classList.add('hidden');
+      showStatus('Key saved in local profile.');
     }
   }
 
@@ -1761,6 +1931,7 @@
     if (!activeProject || isRenaming) return;
     isRenaming = true;
     els.newProjectPanel.classList.add('hidden');
+    if (els.projectSelectContainer) els.projectSelectContainer.classList.add('is-renaming');
     els.projectSelect.classList.add('hidden');
     els.projectRenameInline.classList.remove('hidden');
     els.projectRenameInline.value = activeProject.name || '';
@@ -1774,6 +1945,7 @@
     const newName = els.projectRenameInline.value.trim();
     els.projectRenameInline.classList.add('hidden');
     els.projectSelect.classList.remove('hidden');
+    if (els.projectSelectContainer) els.projectSelectContainer.classList.remove('is-renaming');
 
     if (newName && newName !== activeProject.name) {
       await window.StorageManager.updateProject(activeProject.id, { name: newName });
@@ -1787,6 +1959,7 @@
     isRenaming = false;
     els.projectRenameInline.classList.add('hidden');
     els.projectSelect.classList.remove('hidden');
+    if (els.projectSelectContainer) els.projectSelectContainer.classList.remove('is-renaming');
   }
 
   let lastSelectClickTime = 0;
@@ -1907,9 +2080,48 @@
   els.filterSavedInput.addEventListener('input', () => {
     clearTimeout(docsFilterTimer);
     docsFilterTimer = setTimeout(() => {
+      docsFilterTimer = null;
       visibleDocsLimit = 40;
       renderSavedItems();
-    }, 140);
+    }, 50);
+  });
+
+  els.filterSavedInput.addEventListener('search', () => {
+    clearTimeout(docsFilterTimer);
+    docsFilterTimer = null;
+    visibleDocsLimit = 40;
+    renderSavedItems();
+  });
+
+  els.filterSavedInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (docsFilterTimer) {
+        clearTimeout(docsFilterTimer);
+        docsFilterTimer = null;
+        visibleDocsLimit = 40;
+        renderSavedItems();
+      } else {
+        stepFindMatch(e.shiftKey ? -1 : 1);
+      }
+    }
+  });
+
+  if (els.btnFindPrev) {
+    els.btnFindPrev.addEventListener('click', () => stepFindMatch(-1));
+  }
+  if (els.btnFindNext) {
+    els.btnFindNext.addEventListener('click', () => stepFindMatch(1));
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+      if (els.viewDocs && !els.viewDocs.classList.contains('hidden') && els.filterSavedInput) {
+        e.preventDefault();
+        els.filterSavedInput.focus();
+        els.filterSavedInput.select();
+      }
+    }
   });
 
   // Debounced input persistence for Interpreter inquiry (waits for Analyze with AI click for strategy generation)
@@ -1949,6 +2161,7 @@
           strategy = ensureActiveStrategy();
           strategy.keyConcepts = parsed.keywords;
           strategy.exclusions = parsed.exclusions;
+          strategy.regexPatterns = parsed.regexes || [];
           strategy.primaryExpressions = window.ExpressionEngine.splitExpressions(rawExpr);
           strategy.compiledExpressions = rawExpr;
           renderStrategyPreview(strategy);

@@ -14,9 +14,10 @@
   <div class="defrost-shell">
     <!-- Slim Floating Vertical Rail with Linear Icons -->
     <nav class="nav-rail" aria-label="Quick Navigation">
-      <button class="rail-logo-btn" title="Defrost" id="btnRailLogo">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07L19.07 4.93" stroke-linecap="round"/>
+      <button class="rail-btn rail-help-btn" id="railNavHelp" title="Keywords &amp; Regex Guide" aria-label="Keywords &amp; Regex Guide">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8.5 8.5a3.7 3.7 0 0 1 7.1 1.2c0 2.4-3.6 3.2-3.6 5.3"/>
+          <line x1="12" y1="19.5" x2="12.01" y2="19.5"/>
         </svg>
       </button>
 
@@ -99,7 +100,7 @@
       <!-- Scrollable Main Content -->
       <div class="frost-content">
         <!-- KPI Banner -->
-        <section class="kpi-banner">
+        <section class="kpi-banner" id="kpiBanner">
           <div>
             <div class="kpi-label">Dossier</div>
             <div class="kpi-number-row">
@@ -160,7 +161,7 @@
               </div>
 
               <div class="ai-prompt-box">
-                <label for="aiPromptInput" class="field-label-micro">Enter your research inquiry or detailed brief:</label>
+                <label for="aiPromptInput" class="sr-only">Enter your research inquiry or detailed brief:</label>
                 <textarea
                   id="aiPromptInput"
                   class="ai-textarea"
@@ -214,7 +215,7 @@
                   id="expressionsInput"
                   class="ai-textarea expressions-box"
                   rows="4"
-                  placeholder='Type keywords, "exact phrases", booleans (A OR B), -exclusions, or /regex/. Auto-filled by AI Interpreter, or edit directly here.'
+                  placeholder='One keyword/phrase per line or comma-separated (e.g. solar power, climate policy), booleans (A OR B), -exclusions, or /regex/.'
                 ></textarea>
               </div>
 
@@ -268,8 +269,6 @@
             <button id="btnScanVisualsAi" class="btn-frost btn-sm btn-visual-ai" title="Run AI Vision OCR on charts, infographics, SVG diagrams, canvases, or open image/PDF tabs">
               Scan visuals &amp; OCR (AI)
             </button>
-
-            <div id="scanStatusBanner" class="status-pill-frost hidden"></div>
           </section>
         </div>
 
@@ -315,16 +314,18 @@
             </div>
 
             <div class="search-top-results-bar">
-              <label for="topResultsCountInput" class="field-label-micro">Open top</label>
-              <input
-                type="number"
-                id="topResultsCountInput"
-                class="top-results-number-input"
-                min="1"
-                max="50"
-                value="5"
-                title="Number of search result pages to open (1-50)"
-              >
+              <div class="top-results-count-group">
+                <label for="topResultsCountInput" class="field-label-micro">Open top</label>
+                <input
+                  type="number"
+                  id="topResultsCountInput"
+                  class="top-results-number-input"
+                  min="1"
+                  max="50"
+                  value="5"
+                  title="Number of search result pages to open (1-50)"
+                >
+              </div>
               <button id="btnOpenTopResults" type="button" class="btn-frost btn-frost-primary btn-sm" title="Open the top N results in background tabs">
                 Open tabs
               </button>
@@ -350,13 +351,18 @@
             </div>
 
             <div class="search-wrap">
-              <label for="filterSavedInput" class="sr-only">Filter saved extracts</label>
+              <label for="filterSavedInput" class="sr-only">Find in extracts</label>
               <input
                 type="search"
                 id="filterSavedInput"
                 class="search-input-pill"
-                placeholder="Filter extracts by text, source, tag or keyword..."
+                placeholder="Find exact words, phrases, source or tag..."
               >
+              <div id="filterFindNav" class="filter-find-nav hidden">
+                <span id="filterMatchCount" class="filter-match-count">0/0</span>
+                <button type="button" id="btnFindPrev" class="filter-nav-btn" title="Previous match (Shift+Enter)">&#9650;</button>
+                <button type="button" id="btnFindNext" class="filter-nav-btn" title="Next match (Enter)">&#9660;</button>
+              </div>
             </div>
 
             <div id="savedItemsList" class="saved-items-scroll-list"></div>
@@ -552,15 +558,84 @@
                 Verify &amp; save
               </button>
             </div>
-            <div id="geminiTestFeedback" class="status-pill-frost hidden"></div>
+          </section>
+        </div>
+
+        <!-- VIEW 5: KEYWORDS & REGEX GUIDE (?) -->
+        <div id="viewHelp" class="view-panel hidden">
+          <section class="neo-card">
+            <div class="neo-card-header">
+              <h2 class="neo-card-title">Keywords &amp; regex guide</h2>
+            </div>
+
+            <div class="help-guide-section">
+              <h3 class="help-guide-heading">1) Keywords &amp; phrases</h3>
+              <ul class="help-guide-list">
+                <li><strong>One rule per line or comma-separated:</strong> every line (or item separated by <code>,</code> or <code>;</code>) is an independent rule. Any matching rule captures the extract.</li>
+                <li><strong>Multi-word names &amp; phrases stay together:</strong> a plain 2–3 word line without operators (e.g. <code>solar power</code>) matches as an adjacent phrase instead of splitting into separate words.</li>
+                <li><strong>Natural language (4+ words):</strong> longer sentences use flexible semantic &amp; stemmed matching (IT/EN).</li>
+                <li><strong>Exact quotes &amp; wildcards:</strong> use <code>"exact phrase"</code> for strict text, <code>+word</code> for mandatory terms, and <code>renewabl*</code> for prefix wildcards.</li>
+              </ul>
+            </div>
+
+            <div class="help-guide-section">
+              <h3 class="help-guide-heading">2) Boolean operators (uppercase)</h3>
+              <ul class="help-guide-list">
+                <li><strong>Alternatives:</strong> <code>solar OR photovoltaic</code> or <code>(HL7 | FHIR)</code></li>
+                <li><strong>Both required:</strong> <code>climate AND policy</code></li>
+                <li><strong>Grouped rules:</strong> <code>("solar power" OR "wind energy") AND Europe</code></li>
+                <li><strong>Mixed:</strong> <code>EHR AND usability OR feedback</code></li>
+              </ul>
+            </div>
+
+            <div class="help-guide-section">
+              <h3 class="help-guide-heading">3) Exclusions (- or NOT)</h3>
+              <ul class="help-guide-list">
+                <li><strong>Inline exclusion:</strong> <code>solar -subsidies -"feed-in tariff"</code> or <code>energy NOT nuclear</code></li>
+                <li><strong>Global exclusion:</strong> placing <code>-1975</code> or <code>-cookie</code> on its own line excludes that term across <strong>all</strong> rules.</li>
+              </ul>
+            </div>
+
+            <div class="help-guide-section">
+              <h3 class="help-guide-heading">4) Regular expressions (/pattern/flags)</h3>
+              <p class="help-guide-note">
+                Wrap any regex in <code>/.../</code> (case-insensitive <code>i</code> is enabled automatically). Common regexes are automatically translated into readable badges in <strong>Synced tags</strong>; hover a badge to inspect the raw pattern.
+              </p>
+              <div class="help-examples-grid">
+                <div class="help-example-row">
+                  <code>/\b202[0-6]\b/</code>
+                  <span>Years 2020–2026</span>
+                </div>
+                <div class="help-example-row">
+                  <code>/\b\d+(?:[.,]\d+)?\s*%/</code>
+                  <span>Percentages (%)</span>
+                </div>
+                <div class="help-example-row">
+                  <code>/\b\d+(?:[.,]\d+)?\s*(€|\$|EUR|USD)\b/i</code>
+                  <span>Currency amounts</span>
+                </div>
+                <div class="help-example-row">
+                  <code>/\b(ISO\s*\d+|HL7\s*FHIR|GDPR)\b/i</code>
+                  <span>Standards &amp; codes</span>
+                </div>
+                <div class="help-example-row">
+                  <code>/\btelemedic(ina|ine|al)\b/i</code>
+                  <span>Word variants</span>
+                </div>
+                <div class="help-example-row">
+                  <code>/\b\d+\s*(MW|GW|kWh)\b/i solar -ads</code>
+                  <span>Regex + keyword + exclusion</span>
+                </div>
+              </div>
+            </div>
           </section>
         </div>
       </div>
 
-      <!-- Footer with Version 0.2.9-alpha -->
+      <!-- Footer with Version 0.4.3-alpha -->
       <footer class="frost-footer">
-        <span class="version-frost">0.2.9-alpha</span>
-        <span class="status-pill-frost" id="footerStatusPill">Defrost Ready</span>
+        <span class="version-frost">0.4.3-alpha</span>
+        <span class="status-pill-frost hidden" id="footerStatusPill"></span>
       </footer>
     </main>
   </div>

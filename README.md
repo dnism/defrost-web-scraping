@@ -23,7 +23,7 @@
 
 ### 3) Extraction & continuous scanner (`content/extractor.js`, `sidebar/sidebar.js`)
 - **Continuous live scanning:** captures relevant extracts in real time as you browse and scroll on the active tab, or scans across all open tabs.
-- **Interactive keywords, exclusions & regex tags:** view active keywords, `-NOT` exclusions, and translated regex badges as removable pills, add new ones inline, and keep them bidirectionally synced with the expressions editor; open the built-in **`?`** guide in the sidebar rail anytime for syntax examples.
+- **Interactive keywords, exclusions & regex tags:** view active keywords, `-NOT` exclusions, and translated regex badges as removable pills synced bidirectionally with the expressions editor; open the built-in **`?`** guide in the sidebar rail anytime for syntax examples.
 - **Visual & media extraction:** extracts image alt text, figure captions, SVG chart labels, and supports optional **Auto AI OCR** for page charts and images.
 - **Semantic noise filtering & metadata:** strips navigation, footers, cookie banners, and ads, while associating each extract with its section heading (`h1`–`h6`), canonical URL, author, publication date, OpenGraph/Schema.org metadata, and detected license.
 

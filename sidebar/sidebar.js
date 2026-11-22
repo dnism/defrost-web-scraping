@@ -66,8 +66,6 @@
     expressionsInput: document.getElementById('expressionsInput'),
     scannerKeywordsList: document.getElementById('scannerKeywordsList'),
     scannerKeywordsCount: document.getElementById('scannerKeywordsCount'),
-    scannerKeywordAddInput: document.getElementById('scannerKeywordAddInput'),
-    btnAddScannerKeyword: document.getElementById('btnAddScannerKeyword'),
     scannerTargetElementsBar: document.getElementById('scannerTargetElementsBar'),
     toggleIncludeVisuals: document.getElementById('toggleIncludeVisuals'),
     toggleAutoAiOcr: document.getElementById('toggleAutoAiOcr'),
@@ -481,37 +479,6 @@
     strategy.primaryExpressions = (strategy.primaryExpressions || [])
       .map(line => removeTermFromExpressionLine(line, rx))
       .filter(line => line && !/^(-(?:"[^"]+"|\S+)\s*)+$/.test(line.trim()));
-    await syncStrategyFromPillsChange(strategy);
-  }
-
-  async function addScannerKeywordOrExclusion(rawInput) {
-    const clean = String(rawInput || '').trim();
-    if (!clean) return;
-    const strategy = ensureActiveStrategy();
-    if (!strategy) return;
-
-    if (/^\/(?:[^/\\]|\\.)+\/[gimsuy]*$/.test(clean)) {
-      const exists = (strategy.regexPatterns || []).some(r => String(r || '').trim().toLowerCase() === clean.toLowerCase());
-      if (!exists) {
-        strategy.regexPatterns.push(clean);
-      }
-    } else if (clean.startsWith('-')) {
-      const excl = clean.replace(/^-+/, '').trim();
-      if (!excl) return;
-      const exists = (strategy.exclusions || []).some(e => String(e || '').trim().toLowerCase() === excl.toLowerCase());
-      if (!exists) {
-        strategy.exclusions.push(excl);
-      }
-    } else {
-      const exists = (strategy.keyConcepts || []).some(k => String(k || '').trim().toLowerCase() === clean.toLowerCase());
-      if (!exists) {
-        strategy.keyConcepts.push(clean);
-      }
-    }
-
-    if (els.scannerKeywordAddInput) {
-      els.scannerKeywordAddInput.value = '';
-    }
     await syncStrategyFromPillsChange(strategy);
   }
 
@@ -2135,18 +2102,6 @@
       }
     }, 300);
   });
-
-  if (els.btnAddScannerKeyword && els.scannerKeywordAddInput) {
-    els.btnAddScannerKeyword.addEventListener('click', () => {
-      addScannerKeywordOrExclusion(els.scannerKeywordAddInput.value);
-    });
-    els.scannerKeywordAddInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        addScannerKeywordOrExclusion(els.scannerKeywordAddInput.value);
-      }
-    });
-  }
 
   els.expressionsInput.addEventListener('input', () => {
     autoResizeExpressionsInput();

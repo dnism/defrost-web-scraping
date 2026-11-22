@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Defrost</title>
-  <!-- Google Fonts: Manrope -->
+  <!-- Google Fonts: DM Sans -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="sidebar.css">
 </head>
 <body>
@@ -100,9 +100,9 @@
       <!-- Scrollable Main Content -->
       <div class="frost-content">
         <!-- KPI Banner -->
-        <section class="kpi-banner" id="kpiBanner">
+        <section class="scrape-banner" id="kpiBanner">
           <div>
-            <div class="kpi-label">Dossier</div>
+            <div class="kpi-label">Scrapes</div>
             <div class="kpi-number-row">
               <span class="kpi-number" id="statExtracts">0</span>
             </div>
@@ -121,7 +121,7 @@
               <div class="card-title-group">
                 <span class="card-badge-ai" id="interpreterBadgeAi">AI</span>
                 <div class="card-title-stack">
-                  <h2 class="neo-card-title">Interpreter</h2>
+                  <h2 class="neo-card-title">INTERPRETER</h2>
                   <span class="model-subtitle" id="geminiModelBadge">gemini-2.5-flash</span>
                 </div>
               </div>
@@ -204,19 +204,22 @@
           <section class="neo-card">
             <div class="neo-card-header">
               <div class="card-title-group">
-                <h2 class="neo-card-title">Extraction and scanner</h2>
+                <h2 class="neo-card-title">EXTRACTION AND SCANNER</h2>
               </div>
             </div>
 
             <div class="scanner-rules-group">
               <div class="field-group-stacked">
-                <label for="expressionsInput" class="field-label-micro">Detection expressions &amp; keywords:</label>
-                <textarea
-                  id="expressionsInput"
-                  class="ai-textarea expressions-box"
-                  rows="4"
-                  placeholder='One keyword/phrase per line or comma-separated (e.g. solar power, climate policy), booleans (A OR B), -exclusions, or /regex/.'
-                ></textarea>
+                <div class="expressions-placeholder-wrap">
+                  <textarea
+                    id="expressionsInput"
+                    class="ai-textarea expressions-box"
+                    rows="4"
+                    aria-label="Keywords and detection expressions"
+                    placeholder=" "
+                  ></textarea>
+                  <div class="expressions-rich-placeholder" aria-hidden="true">One <strong>keyword/phrase</strong> per line or comma-separated (e.g. solar power, climate policy), booleans (A OR B), -exclusions, or /regex/.</div>
+                </div>
               </div>
 
               <div class="scanner-keywords-block">
@@ -225,15 +228,6 @@
                   <span id="scannerKeywordsCount" class="scanner-keywords-count">0</span>
                 </div>
                 <div id="scannerKeywordsList" class="scanner-tags-list"></div>
-                <div class="scanner-keyword-add-row">
-                  <input
-                    type="text"
-                    id="scannerKeywordAddInput"
-                    class="scanner-keyword-input"
-                    placeholder="Add keyword or -exclusion..."
-                  >
-                  <button type="button" id="btnAddScannerKeyword" class="btn-frost-mini">+ Add</button>
-                </div>
               </div>
             </div>
 
@@ -285,7 +279,7 @@
                   <line x1="7" y1="13" x2="17" y2="13"/>
                   <line x1="7" y1="16.5" x2="13" y2="16.5"/>
                 </svg>
-                <h2 class="neo-card-title">Open search tabs</h2>
+                <h2 class="neo-card-title">OPEN SEARCH TABS</h2>
               </div>
             </div>
 
@@ -346,7 +340,7 @@
         <div id="viewDocs" class="view-panel hidden">
           <section class="neo-card">
             <div class="neo-card-header">
-              <h2 class="neo-card-title">Collected dossier extracts</h2>
+              <h2 class="neo-card-title">COLLECTED DOSSIER EXTRACTS</h2>
               <button id="btnClearItems" class="btn-frost btn-xs btn-danger-soft">Clear all</button>
             </div>
 
@@ -373,7 +367,7 @@
         <div id="viewExport" class="view-panel hidden">
           <section class="neo-card">
             <div class="neo-card-header">
-              <h2 class="neo-card-title">Export</h2>
+              <h2 class="neo-card-title">EXPORT</h2>
             </div>
             <p class="export-lead-text">
               Generate structured, self-describing research dossiers with source catalog, research notes, and compliance attribution.
@@ -404,7 +398,7 @@
         <div id="viewSettings" class="view-panel hidden">
           <section class="neo-card settings-panel">
             <div class="neo-card-header">
-              <h2 class="neo-card-title">AI engine configuration</h2>
+              <h2 class="neo-card-title">AI ENGINE CONFIGURATION</h2>
             </div>
 
             <div class="form-field-group">
@@ -565,7 +559,7 @@
         <div id="viewHelp" class="view-panel hidden">
           <section class="neo-card">
             <div class="neo-card-header">
-              <h2 class="neo-card-title">Keywords &amp; regex guide</h2>
+              <h2 class="neo-card-title">KEYWORDS &amp; REGEX GUIDE</h2>
             </div>
 
             <div class="help-guide-section">
@@ -632,9 +626,9 @@
         </div>
       </div>
 
-      <!-- Footer with Version 0.4.3-alpha -->
+      <!-- Footer with Version 0.4.21-alpha -->
       <footer class="frost-footer">
-        <span class="version-frost">0.4.3-alpha</span>
+        <span class="version-frost">0.4.21-alpha</span>
         <span class="status-pill-frost hidden" id="footerStatusPill"></span>
       </footer>
     </main>
